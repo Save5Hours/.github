@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Save5Hours/.github/blob/main/SECURITY.md
+    about: Do not open a public issue. Report privately to security@save5hours.ai.
+  - name: Talk to us about a project
+    url: mailto:hello@save5hours.ai
+    about: New automation projects, scoping and general enquiries.
+  - name: save5hours.ai
+    url: https://save5hours.ai
+    about: What we do and how we work.

@@ -1,0 +1,33 @@
+name: Feature or automation request
+description: Propose a new capability, workflow or improvement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What manual or repetitive work is this meant to remove?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: input
+    id: time_saved
+    attributes:
+      label: Estimated time saved
+      placeholder: e.g. ~4 hours per week across 3 people
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: This request contains no client data, credentials or personal data
+          required: true

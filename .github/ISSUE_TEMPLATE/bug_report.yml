@@ -1,0 +1,49 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Never include credentials, client data or personal data.
+        For security vulnerabilities, email security@save5hours.ai instead.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: A clear description of the problem and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Run ...
+        3. See error
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: production / staging / local — version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste relevant logs. Redact any sensitive value.
+      render: shell
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - Blocking — the workflow is down
+        - Major — a core step fails
+        - Minor — annoying but there is a workaround
+    validations:
+      required: true

@@ -7,8 +7,8 @@
 </p>
 
 <p align="center">
-  <a href="https://save5hours.ai"><img alt="Website" src="https://img.shields.io/badge/save5hours.ai-F06000?style=for-the-badge&logo=googlechrome&logoColor=white"></a>
-  <a href="mailto:hello@save5hours.ai"><img alt="Email" src="https://img.shields.io/badge/hello@save5hours.ai-0B0B0D?style=for-the-badge&logo=maildotru&logoColor=white"></a>
+  <a href="https://save5hours.ch"><img alt="Website" src="https://img.shields.io/badge/save5hours.ch-F06000?style=for-the-badge&logo=googlechrome&logoColor=white"></a>
+  <a href="mailto:hello@save5hours.ch"><img alt="Email" src="https://img.shields.io/badge/hello@save5hours.ch-0B0B0D?style=for-the-badge&logo=maildotru&logoColor=white"></a>
   <img alt="Switzerland" src="https://img.shields.io/badge/Built%20in-Switzerland-D52B1E?style=for-the-badge&logo=swift&logoColor=white">
 </p>
 
@@ -83,9 +83,9 @@ We do not ship isolated AI demos. Every solution is designed around:
 
 | | |
 | --- | --- |
-| **New project** | [hello@save5hours.ai](mailto:hello@save5hours.ai) |
-| **Security reports** | [security@save5hours.ai](mailto:security@save5hours.ai) — see our [security policy](https://github.com/Save5Hours/.github/blob/main/SECURITY.md) |
-| **Everything else** | [save5hours.ai](https://save5hours.ai) |
+| **New project** | [hello@save5hours.ch](mailto:hello@save5hours.ch) |
+| **Security reports** | [security@save5hours.ch](mailto:security@save5hours.ch) — see our [security policy](https://github.com/Save5Hours/.github/blob/main/SECURITY.md) |
+| **Everything else** | [save5hours.ch](https://save5hours.ch) |
 
 <br/>
 
@@ -101,5 +101,5 @@ We do not ship isolated AI demos. Every solution is designed around:
 
 <p align="center">
   <strong>Save 5+ hours every week.</strong><br/>
-  <a href="https://save5hours.ai">save5hours.ai</a> · <a href="mailto:hello@save5hours.ai">hello@save5hours.ai</a> · Switzerland
+  <a href="https://save5hours.ch">save5hours.ch</a> · <a href="mailto:hello@save5hours.ch">hello@save5hours.ch</a> · Switzerland
 </p>

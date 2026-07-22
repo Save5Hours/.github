@@ -46,4 +46,4 @@ URLs so they resolve correctly on the organization profile.
 
 ---
 
-[save5hours.ai](https://save5hours.ai) · [hello@save5hours.ai](mailto:hello@save5hours.ai) · Switzerland
+[save5hours.ch](https://save5hours.ch) · [hello@save5hours.ch](mailto:hello@save5hours.ch) · Switzerland

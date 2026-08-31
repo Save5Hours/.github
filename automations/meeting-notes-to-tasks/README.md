@@ -31,14 +31,30 @@ OpenRouter, Notion, and Google keys are entered in the **n8n UI**, not as Railwa
 
 ## 1. Railway (host n8n)
 
-The Railway CLI is **installed in this agent environment** (`railway 5.45.10`) but **not logged in**. There is no `RAILWAY_TOKEN` here, so this agent cannot create the project or deploy. Do this from your laptop or paste a token.
+This agent **cannot** log into Railway (`railway whoami` → Unauthorized). Fastest path: one-click template in your browser, then import the workflow JSON from this repo.
 
-### Option A — Dashboard (no CLI)
+### Option A — One-click template (recommended)
+
+[Deploy n8n on Railway](https://railway.com/deploy/n8n-latest)
+
+1. Sign in to Railway in that tab. Wait ~2–3 minutes.
+2. Generate a public domain.
+3. Set `WEBHOOK_URL=https://YOUR-SERVICE.up.railway.app/`
+4. Set `N8N_ENCRYPTION_KEY` (`openssl rand -hex 32`) **once**. Never rotate it.
+5. Confirm a volume at `/home/node/.n8n`.
+6. Open the URL, create the owner account, keep it private.
+7. Import `n8n/meeting-notes-to-tasks.json` (see section 3).
+
+HQ runbook: [Meeting notes → HQ Tasks (n8n)](https://app.notion.com/p/3cd0b26fcc4e81cd9441f9420d6d00da)
+
+### Option B — This repo / Docker image
+
+The Railway CLI is installed here (`railway 5.45.10`) but not logged in. From your laptop:
 
 1. [railway.app](https://railway.app) → New project → **Empty project**.
 2. **+ New** → **GitHub repo** → `Save5Hours/.github`  
    Set **Root Directory** to `automations/meeting-notes-to-tasks`.
-   Or **+ New** → **Docker Image** → `n8nio/n8n` if you prefer not to build from this repo.
+   Or **+ New** → **Docker Image** → `n8nio/n8n`.
 3. **Variables** — copy from `.env.example`. Generate the encryption key first:
 
    ```bash
@@ -55,7 +71,7 @@ The Railway CLI is **installed in this agent environment** (`railway 5.45.10`) b
    - `N8N_PROTOCOL` = `https`
 6. Redeploy. Open the public URL. Create the **owner account** (first visitor). Keep the URL private.
 
-### Option B — CLI (once you are logged in)
+### Option C — CLI (once you are logged in)
 
 ```bash
 cd automations/meeting-notes-to-tasks

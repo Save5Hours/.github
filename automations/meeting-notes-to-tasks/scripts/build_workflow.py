@@ -112,7 +112,7 @@ return [{ json: skipDuplicateTasks(parsed, query) }];
 """.strip()
 
 BUILD_NOTION_CODE = TRANSFORM_JS + "\n\n" + """
-return [{ json: buildNotionPage($input.first().json) }];
+return $input.all().map((item) => ({ json: buildNotionPage(item.json) }));
 """.strip()
 
 NOTION_FILTER_BODY = (

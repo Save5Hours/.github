@@ -65,6 +65,10 @@ for user_id in (
 create_url = nodes["Create Notion task"]["parameters"]["url"]
 assert create_url == "https://api.notion.com/v1/pages"
 
+build_code = nodes["Build Notion page"]["parameters"]["jsCode"]
+if "$input.all()" not in build_code:
+    raise SystemExit("Build Notion page must map every split task, not only $input.first()")
+
 or_url = nodes["OpenRouter"]["parameters"]["url"]
 assert or_url == "https://openrouter.ai/api/v1/chat/completions"
 

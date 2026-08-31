@@ -42,7 +42,13 @@ python3 - <<'PY'
 import json, os, subprocess, sys
 
 def run(args, check=True):
-    print("+", " ".join(args), flush=True)
+    shown = []
+    for a in args:
+        if a.startswith("N8N_ENCRYPTION_KEY="):
+            shown.append("N8N_ENCRYPTION_KEY=<redacted>")
+        else:
+            shown.append(a)
+    print("+", " ".join(shown), flush=True)
     r = subprocess.run(args, capture_output=True, text=True)
     if r.stdout.strip():
         print(r.stdout, end="" if r.stdout.endswith("\n") else "\n")
@@ -89,13 +95,13 @@ if not linked:
     run(init)
     run(["railway", "add", "--service", service, "--json"], check=False)
 
+run(["railway", "service", "link", service], check=False)
+
 vol = run(
     [
         "railway",
         "volume",
         "add",
-        "--service",
-        service,
         "--mount-path",
         "/home/node/.n8n",
         "--json",
@@ -111,7 +117,7 @@ listed = run(
 )
 domain = parse_domain(listed.stdout if listed.returncode == 0 else "")
 if not domain:
-    created = run(["railway", "domain", "--service", service, "--json"], check=False)
+    created = run(["railway", "domain", "--service", service, "--port", "5678", "--json"], check=False)
     domain = parse_domain(created.stdout)
     if not domain and created.returncode != 0:
         print("domain create deferred until after first deploy:", created.stderr.strip())
@@ -125,7 +131,9 @@ if domain:
 vars_cmd = [
     "railway", "variable", "set",
     f"N8N_ENCRYPTION_KEY={os.environ['N8N_ENCRYPTION_KEY']}",
-    "N8N_PORT=${{PORT}}",
+    "N8N_PORT=5678",
+    "DB_SQLITE_POOL_SIZE=5",
+    "N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false",
     "N8N_PROTOCOL=https",
     "GENERIC_TIMEZONE=Europe/Zurich",
     "N8N_DEFAULT_BINARY_DATA_MODE=filesystem",
@@ -147,7 +155,7 @@ run([
 ])
 
 if not domain:
-    created = run(["railway", "domain", "--service", service, "--json"])
+    created = run(["railway", "domain", "--service", service, "--port", "5678", "--json"])
     domain = parse_domain(created.stdout)
     if not domain:
         print("Could not parse the public domain. Set WEBHOOK_URL in the Railway dashboard.", file=sys.stderr)

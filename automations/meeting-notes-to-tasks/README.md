@@ -178,6 +178,8 @@ curl -sS -X POST "https://YOUR-N8N-HOST/webhook-test/meeting-notes" \
 
 Use `/webhook/meeting-notes` once the workflow is published. Check **Executions** if nothing appears in Notion.
 
+Verified against n8n **1.123.75** (same tag as the Dockerfile): `n8n import:workflow` succeeded with 21 nodes and matching connections. That is not an end-to-end Drive run.
+
 ## 4. What gets written to Notion
 
 | Property | Value |

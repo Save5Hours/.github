@@ -14,8 +14,10 @@ data = json.loads(path.read_text(encoding="utf-8"))
 nodes = {n["name"]: n for n in data["nodes"]}
 required = [
     "Google Drive Trigger",
+    "Google Drive Trigger (updated)",
     "Webhook",
     "Normalize file",
+    "Notes have content",
     "OpenRouter",
     "Parse and map assignees",
     "Create Notion task",
@@ -23,6 +25,20 @@ required = [
 missing = [name for name in required if name not in nodes]
 if missing:
     raise SystemExit(f"missing nodes: {missing}")
+
+node_names = set(nodes)
+for src, spec in data["connections"].items():
+    if src not in node_names:
+        raise SystemExit(f"connection source missing: {src}")
+    for branch in spec.get("main", []):
+        for link in branch or []:
+            if link["node"] not in node_names:
+                raise SystemExit(f"connection target missing: {link['node']}")
+
+created = nodes["Google Drive Trigger"]["parameters"]["event"]
+updated = nodes["Google Drive Trigger (updated)"]["parameters"]["event"]
+if created != "fileCreated" or updated != "fileUpdated":
+    raise SystemExit(f"unexpected Drive events: {created} {updated}")
 
 conns = data["connections"]
 assert "Google Drive Trigger" in conns

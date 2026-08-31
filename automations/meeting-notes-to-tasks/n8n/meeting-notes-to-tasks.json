@@ -11,7 +11,7 @@
         140
       ],
       "parameters": {
-        "content": "## Meeting notes \u2192 HQ Tasks\n\n1. **Google Drive Trigger** (recommended): polls a flat Gemini-notes folder for new Google Docs.\n2. **Webhook** (optional): Apps Script / manual `{ \"fileId\": \"...\" }`.\n3. OpenRouter (`openrouter/free`) extracts action items.\n4. Creates rows in HQ **Tasks** with Assignee, Origin=Meeting, Drive file ID.\n\nReplace the Drive folder ID before publishing. Connect the four credentials listed in README.md.",
+        "content": "## Meeting notes \u2192 HQ Tasks\n\nGemini often creates an empty Doc and fills it after the meeting. This workflow watches **file created** and **file updated**, skips notes shorter than 80 characters, then sends text to OpenRouter (`openrouter/free`) and writes HQ Tasks.\n\nReplace both Drive folder IDs before publishing. Connect Google Drive, Notion, OpenRouter, and the webhook secret.",
         "height": 380,
         "width": 340,
         "color": 7
@@ -41,6 +41,41 @@
           "mode": "id"
         },
         "event": "fileCreated",
+        "options": {
+          "fileType": "application/vnd.google-apps.document"
+        }
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "GOOGLE_DRIVE",
+          "name": "Google Drive (Save 5 Hours)"
+        }
+      }
+    },
+    {
+      "id": "drive-trigger-updated",
+      "name": "Google Drive Trigger (updated)",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        40
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "REPLACE_ME_GEMINI_NOTES_FOLDER_ID",
+          "mode": "id"
+        },
+        "event": "fileUpdated",
         "options": {
           "fileType": "application/vnd.google-apps.document"
         }
@@ -166,6 +201,19 @@
       }
     },
     {
+      "id": "has-content",
+      "name": "Notes have content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        320
+      ],
+      "parameters": {
+        "jsCode": "const TASKS_DATABASE_ID = '3bc0b26fcc4e8057b7ade1cdf5a67e6e';\nconst MIN_NOTE_CHARS = 80;\n\nconst PEOPLE = {\n  antoine: '3bcd872b-594c-8157-a68b-0002ec224796',\n  martin: '3bcd872b-594c-81b9-acfe-0002ebe41550',\n  roman: '3bcd872b-594c-81a9-bf7d-00029eb21064',\n};\n\nconst ALIASES = {\n  antoine: 'antoine',\n  'antoine bejarano': 'antoine',\n  'antoine bejarano alvarez': 'antoine',\n  'antoine@save5hours.ch': 'antoine',\n  martin: 'martin',\n  'martin@save5hours.ch': 'martin',\n  roman: 'roman',\n  ronald: 'roman',\n  'roman cajka': 'roman',\n  'roman@save5hours.ch': 'roman',\n  'roman.cajka@gmail.com': 'roman',\n};\n\nfunction noteTextIsReady(text) {\n  return String(text || '').replace(/\\s+/g, ' ').trim().length >= MIN_NOTE_CHARS;\n}\n\nfunction extractJson(text) {\n  const raw = String(text || '');\n  const fenced = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  const body = fenced ? fenced[1] : raw;\n  const start = body.indexOf('{');\n  const end = body.lastIndexOf('}');\n  if (start === -1 || end === -1) {\n    throw new Error(`OpenRouter did not return JSON. Preview: ${raw.slice(0, 400)}`);\n  }\n  return JSON.parse(body.slice(start, end + 1));\n}\n\nfunction mapAssignee(value) {\n  const key = String(value || '').trim().toLowerCase();\n  const mapped = ALIASES[key] || (PEOPLE[key] ? key : 'antoine');\n  return { key: mapped, id: PEOPLE[mapped] };\n}\n\nfunction mapPriority(value) {\n  const p = String(value || 'Medium');\n  if (p === 'High' || p === 'Low' || p === 'Medium') return p;\n  const lower = p.toLowerCase();\n  if (lower.includes('high') || lower.includes('urgent')) return 'High';\n  if (lower.includes('low')) return 'Low';\n  return 'Medium';\n}\n\nfunction parseOpenRouterContent(content, meta) {\n  const parsed = extractJson(content);\n  const tasks = (parsed.tasks || []).map((task) => {\n    const person = mapAssignee(task.assignee);\n    const title = String(task.title || '').replace(/\\s+/g, ' ').trim();\n    const due = task.due && /^\\d{4}-\\d{2}-\\d{2}/.test(String(task.due))\n      ? String(task.due).slice(0, 10)\n      : null;\n    return {\n      title,\n      assignee: person.key,\n      assigneeId: person.id,\n      priority: mapPriority(task.priority),\n      due,\n      notes: String(task.notes || '').trim(),\n      meetingTitle: parsed.meeting_title || meta.fileName,\n      driveFileId: meta.fileId,\n      driveUrl: meta.webViewLink,\n    };\n  }).filter((task) => task.title.length > 0);\n\n  return {\n    meetingTitle: parsed.meeting_title || meta.fileName,\n    driveFileId: meta.fileId,\n    driveUrl: meta.webViewLink,\n    taskCount: tasks.length,\n    tasks,\n  };\n}\n\nfunction skipDuplicateTasks(parsed, notionQuery) {\n  const results = Array.isArray(notionQuery && notionQuery.results) ? notionQuery.results : [];\n  const existingTitles = new Set(\n    results.map((page) => {\n      const title = page.properties && page.properties.Name && page.properties.Name.title\n        && page.properties.Name.title[0]\n        ? page.properties.Name.title[0].plain_text\n        : '';\n      return title.trim().toLowerCase();\n    }).filter(Boolean),\n  );\n\n  const tasks = (parsed.tasks || []).filter((task) => {\n    return !existingTitles.has(String(task.title).trim().toLowerCase());\n  });\n\n  return {\n    ...parsed,\n    existingCount: existingTitles.size,\n    skipped: (parsed.tasks || []).length - tasks.length,\n    taskCount: tasks.length,\n    tasks,\n  };\n}\n\nfunction buildNotionPage(task) {\n  const title = String(task.title || 'Untitled task').slice(0, 2000);\n  const properties = {\n    Name: { title: [{ text: { content: title } }] },\n    Assignee: { people: task.assigneeId ? [{ id: task.assigneeId }] : [] },\n    Status: { status: { name: 'Not started' } },\n    Priority: { select: { name: task.priority || 'Medium' } },\n    Origin: { select: { name: 'Meeting' } },\n    'Drive file ID': { rich_text: [{ text: { content: task.driveFileId || '' } }] },\n    'Drive URL': { url: task.driveUrl || null },\n  };\n\n  if (task.due) {\n    properties['Due date'] = { date: { start: task.due } };\n  }\n\n  const children = [];\n  if (task.meetingTitle) {\n    children.push({\n      object: 'block',\n      type: 'paragraph',\n      paragraph: {\n        rich_text: [{ type: 'text', text: { content: `From meeting: ${String(task.meetingTitle).slice(0, 1800)}` } }],\n      },\n    });\n  }\n  if (task.notes) {\n    children.push({\n      object: 'block',\n      type: 'paragraph',\n      paragraph: {\n        rich_text: [{ type: 'text', text: { content: String(task.notes).slice(0, 1900) } }],\n      },\n    });\n  }\n\n  return {\n    parent: { database_id: TASKS_DATABASE_ID },\n    properties,\n    children,\n  };\n}\n\nconst item = $input.first();\nconst text = (item.json.data || item.json.text || '').toString();\nif (!noteTextIsReady(text)) {\n  return [];\n}\nreturn [item];"
+      }
+    },
+    {
       "id": "build-or",
       "name": "Build OpenRouter payload",
       "type": "n8n-nodes-base.code",
@@ -217,6 +265,9 @@
           }
         }
       },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
       "credentials": {
         "httpHeaderAuth": {
           "id": "OPENROUTER",
@@ -234,7 +285,7 @@
         320
       ],
       "parameters": {
-        "jsCode": "\nconst PEOPLE = {\n  antoine: \"3bcd872b-594c-8157-a68b-0002ec224796\",\n  martin: \"3bcd872b-594c-81b9-acfe-0002ebe41550\",\n  roman: \"3bcd872b-594c-81a9-bf7d-00029eb21064\",\n};\n\nconst ALIASES = {\n  'antoine': 'antoine',\n  'antoine bejarano': 'antoine',\n  'antoine bejarano alvarez': 'antoine',\n  'antoine@save5hours.ch': 'antoine',\n  'martin': 'martin',\n  'martin@save5hours.ch': 'martin',\n  'roman': 'roman',\n  'ronald': 'roman',\n  'roman cajka': 'roman',\n  'roman@save5hours.ch': 'roman',\n  'roman.cajka@gmail.com': 'roman',\n};\n\nfunction extractJson(text) {\n  const raw = String(text || '');\n  const fenced = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  const body = fenced ? fenced[1] : raw;\n  const start = body.indexOf('{');\n  const end = body.lastIndexOf('}');\n  if (start === -1 || end === -1) {\n    throw new Error(`OpenRouter did not return JSON. Preview: ${raw.slice(0, 400)}`);\n  }\n  return JSON.parse(body.slice(start, end + 1));\n}\n\nfunction mapAssignee(value) {\n  const key = String(value || '').trim().toLowerCase();\n  const mapped = ALIASES[key] || (PEOPLE[key] ? key : 'antoine');\n  return { key: mapped, id: PEOPLE[mapped] };\n}\n\nfunction mapPriority(value) {\n  const p = String(value || 'Medium');\n  if (p === 'High' || p === 'Low' || p === 'Medium') return p;\n  const lower = p.toLowerCase();\n  if (lower.includes('high') || lower.includes('urgent')) return 'High';\n  if (lower.includes('low')) return 'Low';\n  return 'Medium';\n}\n\nconst http = $input.first().json;\nconst content = http.choices?.[0]?.message?.content || http.content || '';\nconst parsed = extractJson(content);\nconst meta = $('Build OpenRouter payload').first().json;\n\nconst tasks = (parsed.tasks || []).map((task) => {\n  const person = mapAssignee(task.assignee);\n  const title = String(task.title || '').replace(/\\s+/g, ' ').trim();\n  const due = task.due && /^\\d{4}-\\d{2}-\\d{2}/.test(String(task.due))\n    ? String(task.due).slice(0, 10)\n    : null;\n  return {\n    title,\n    assignee: person.key,\n    assigneeId: person.id,\n    priority: mapPriority(task.priority),\n    due,\n    notes: String(task.notes || '').trim(),\n    meetingTitle: parsed.meeting_title || meta.fileName,\n    driveFileId: meta.fileId,\n    driveUrl: meta.webViewLink,\n  };\n}).filter((task) => task.title.length > 0);\n\nreturn [{\n  json: {\n    meetingTitle: parsed.meeting_title || meta.fileName,\n    driveFileId: meta.fileId,\n    driveUrl: meta.webViewLink,\n    model: http.model || 'openrouter/free',\n    taskCount: tasks.length,\n    tasks,\n  },\n}];"
+        "jsCode": "const TASKS_DATABASE_ID = '3bc0b26fcc4e8057b7ade1cdf5a67e6e';\nconst MIN_NOTE_CHARS = 80;\n\nconst PEOPLE = {\n  antoine: '3bcd872b-594c-8157-a68b-0002ec224796',\n  martin: '3bcd872b-594c-81b9-acfe-0002ebe41550',\n  roman: '3bcd872b-594c-81a9-bf7d-00029eb21064',\n};\n\nconst ALIASES = {\n  antoine: 'antoine',\n  'antoine bejarano': 'antoine',\n  'antoine bejarano alvarez': 'antoine',\n  'antoine@save5hours.ch': 'antoine',\n  martin: 'martin',\n  'martin@save5hours.ch': 'martin',\n  roman: 'roman',\n  ronald: 'roman',\n  'roman cajka': 'roman',\n  'roman@save5hours.ch': 'roman',\n  'roman.cajka@gmail.com': 'roman',\n};\n\nfunction noteTextIsReady(text) {\n  return String(text || '').replace(/\\s+/g, ' ').trim().length >= MIN_NOTE_CHARS;\n}\n\nfunction extractJson(text) {\n  const raw = String(text || '');\n  const fenced = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  const body = fenced ? fenced[1] : raw;\n  const start = body.indexOf('{');\n  const end = body.lastIndexOf('}');\n  if (start === -1 || end === -1) {\n    throw new Error(`OpenRouter did not return JSON. Preview: ${raw.slice(0, 400)}`);\n  }\n  return JSON.parse(body.slice(start, end + 1));\n}\n\nfunction mapAssignee(value) {\n  const key = String(value || '').trim().toLowerCase();\n  const mapped = ALIASES[key] || (PEOPLE[key] ? key : 'antoine');\n  return { key: mapped, id: PEOPLE[mapped] };\n}\n\nfunction mapPriority(value) {\n  const p = String(value || 'Medium');\n  if (p === 'High' || p === 'Low' || p === 'Medium') return p;\n  const lower = p.toLowerCase();\n  if (lower.includes('high') || lower.includes('urgent')) return 'High';\n  if (lower.includes('low')) return 'Low';\n  return 'Medium';\n}\n\nfunction parseOpenRouterContent(content, meta) {\n  const parsed = extractJson(content);\n  const tasks = (parsed.tasks || []).map((task) => {\n    const person = mapAssignee(task.assignee);\n    const title = String(task.title || '').replace(/\\s+/g, ' ').trim();\n    const due = task.due && /^\\d{4}-\\d{2}-\\d{2}/.test(String(task.due))\n      ? String(task.due).slice(0, 10)\n      : null;\n    return {\n      title,\n      assignee: person.key,\n      assigneeId: person.id,\n      priority: mapPriority(task.priority),\n      due,\n      notes: String(task.notes || '').trim(),\n      meetingTitle: parsed.meeting_title || meta.fileName,\n      driveFileId: meta.fileId,\n      driveUrl: meta.webViewLink,\n    };\n  }).filter((task) => task.title.length > 0);\n\n  return {\n    meetingTitle: parsed.meeting_title || meta.fileName,\n    driveFileId: meta.fileId,\n    driveUrl: meta.webViewLink,\n    taskCount: tasks.length,\n    tasks,\n  };\n}\n\nfunction skipDuplicateTasks(parsed, notionQuery) {\n  const results = Array.isArray(notionQuery && notionQuery.results) ? notionQuery.results : [];\n  const existingTitles = new Set(\n    results.map((page) => {\n      const title = page.properties && page.properties.Name && page.properties.Name.title\n        && page.properties.Name.title[0]\n        ? page.properties.Name.title[0].plain_text\n        : '';\n      return title.trim().toLowerCase();\n    }).filter(Boolean),\n  );\n\n  const tasks = (parsed.tasks || []).filter((task) => {\n    return !existingTitles.has(String(task.title).trim().toLowerCase());\n  });\n\n  return {\n    ...parsed,\n    existingCount: existingTitles.size,\n    skipped: (parsed.tasks || []).length - tasks.length,\n    taskCount: tasks.length,\n    tasks,\n  };\n}\n\nfunction buildNotionPage(task) {\n  const title = String(task.title || 'Untitled task').slice(0, 2000);\n  const properties = {\n    Name: { title: [{ text: { content: title } }] },\n    Assignee: { people: task.assigneeId ? [{ id: task.assigneeId }] : [] },\n    Status: { status: { name: 'Not started' } },\n    Priority: { select: { name: task.priority || 'Medium' } },\n    Origin: { select: { name: 'Meeting' } },\n    'Drive file ID': { rich_text: [{ text: { content: task.driveFileId || '' } }] },\n    'Drive URL': { url: task.driveUrl || null },\n  };\n\n  if (task.due) {\n    properties['Due date'] = { date: { start: task.due } };\n  }\n\n  const children = [];\n  if (task.meetingTitle) {\n    children.push({\n      object: 'block',\n      type: 'paragraph',\n      paragraph: {\n        rich_text: [{ type: 'text', text: { content: `From meeting: ${String(task.meetingTitle).slice(0, 1800)}` } }],\n      },\n    });\n  }\n  if (task.notes) {\n    children.push({\n      object: 'block',\n      type: 'paragraph',\n      paragraph: {\n        rich_text: [{ type: 'text', text: { content: String(task.notes).slice(0, 1900) } }],\n      },\n    });\n  }\n\n  return {\n    parent: { database_id: TASKS_DATABASE_ID },\n    properties,\n    children,\n  };\n}\n\nconst http = $input.first().json;\nconst content = http.choices?.[0]?.message?.content || http.content || '';\nconst meta = $('Build OpenRouter payload').first().json;\nconst parsed = parseOpenRouterContent(content, meta);\nparsed.model = http.model || 'openrouter/free';\nreturn [{ json: parsed }];"
       }
     },
     {
@@ -299,6 +350,9 @@
         "jsonBody": "={{ JSON.stringify({ filter: { property: 'Drive file ID', rich_text: { equals: $json.driveFileId } }, page_size: 100 }) }}",
         "options": {}
       },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
       "credentials": {
         "notionApi": {
           "id": "NOTION",
@@ -317,7 +371,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const parsed = $('Parse and map assignees').first().json;\nconst query = $input.first().json || {};\nconst results = Array.isArray(query.results) ? query.results : [];\n\nconst existingTitles = new Set(\n  results.map((page) => {\n    const title = page.properties?.Name?.title?.[0]?.plain_text || '';\n    return title.trim().toLowerCase();\n  }).filter(Boolean),\n);\n\nconst tasks = (parsed.tasks || []).filter((task) => {\n  return !existingTitles.has(String(task.title).trim().toLowerCase());\n});\n\nreturn [{\n  json: {\n    ...parsed,\n    existingCount: existingTitles.size,\n    skipped: (parsed.tasks || []).length - tasks.length,\n    taskCount: tasks.length,\n    tasks,\n  },\n}];"
+        "jsCode": "const TASKS_DATABASE_ID = '3bc0b26fcc4e8057b7ade1cdf5a67e6e';\nconst MIN_NOTE_CHARS = 80;\n\nconst PEOPLE = {\n  antoine: '3bcd872b-594c-8157-a68b-0002ec224796',\n  martin: '3bcd872b-594c-81b9-acfe-0002ebe41550',\n  roman: '3bcd872b-594c-81a9-bf7d-00029eb21064',\n};\n\nconst ALIASES = {\n  antoine: 'antoine',\n  'antoine bejarano': 'antoine',\n  'antoine bejarano alvarez': 'antoine',\n  'antoine@save5hours.ch': 'antoine',\n  martin: 'martin',\n  'martin@save5hours.ch': 'martin',\n  roman: 'roman',\n  ronald: 'roman',\n  'roman cajka': 'roman',\n  'roman@save5hours.ch': 'roman',\n  'roman.cajka@gmail.com': 'roman',\n};\n\nfunction noteTextIsReady(text) {\n  return String(text || '').replace(/\\s+/g, ' ').trim().length >= MIN_NOTE_CHARS;\n}\n\nfunction extractJson(text) {\n  const raw = String(text || '');\n  const fenced = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  const body = fenced ? fenced[1] : raw;\n  const start = body.indexOf('{');\n  const end = body.lastIndexOf('}');\n  if (start === -1 || end === -1) {\n    throw new Error(`OpenRouter did not return JSON. Preview: ${raw.slice(0, 400)}`);\n  }\n  return JSON.parse(body.slice(start, end + 1));\n}\n\nfunction mapAssignee(value) {\n  const key = String(value || '').trim().toLowerCase();\n  const mapped = ALIASES[key] || (PEOPLE[key] ? key : 'antoine');\n  return { key: mapped, id: PEOPLE[mapped] };\n}\n\nfunction mapPriority(value) {\n  const p = String(value || 'Medium');\n  if (p === 'High' || p === 'Low' || p === 'Medium') return p;\n  const lower = p.toLowerCase();\n  if (lower.includes('high') || lower.includes('urgent')) return 'High';\n  if (lower.includes('low')) return 'Low';\n  return 'Medium';\n}\n\nfunction parseOpenRouterContent(content, meta) {\n  const parsed = extractJson(content);\n  const tasks = (parsed.tasks || []).map((task) => {\n    const person = mapAssignee(task.assignee);\n    const title = String(task.title || '').replace(/\\s+/g, ' ').trim();\n    const due = task.due && /^\\d{4}-\\d{2}-\\d{2}/.test(String(task.due))\n      ? String(task.due).slice(0, 10)\n      : null;\n    return {\n      title,\n      assignee: person.key,\n      assigneeId: person.id,\n      priority: mapPriority(task.priority),\n      due,\n      notes: String(task.notes || '').trim(),\n      meetingTitle: parsed.meeting_title || meta.fileName,\n      driveFileId: meta.fileId,\n      driveUrl: meta.webViewLink,\n    };\n  }).filter((task) => task.title.length > 0);\n\n  return {\n    meetingTitle: parsed.meeting_title || meta.fileName,\n    driveFileId: meta.fileId,\n    driveUrl: meta.webViewLink,\n    taskCount: tasks.length,\n    tasks,\n  };\n}\n\nfunction skipDuplicateTasks(parsed, notionQuery) {\n  const results = Array.isArray(notionQuery && notionQuery.results) ? notionQuery.results : [];\n  const existingTitles = new Set(\n    results.map((page) => {\n      const title = page.properties && page.properties.Name && page.properties.Name.title\n        && page.properties.Name.title[0]\n        ? page.properties.Name.title[0].plain_text\n        : '';\n      return title.trim().toLowerCase();\n    }).filter(Boolean),\n  );\n\n  const tasks = (parsed.tasks || []).filter((task) => {\n    return !existingTitles.has(String(task.title).trim().toLowerCase());\n  });\n\n  return {\n    ...parsed,\n    existingCount: existingTitles.size,\n    skipped: (parsed.tasks || []).length - tasks.length,\n    taskCount: tasks.length,\n    tasks,\n  };\n}\n\nfunction buildNotionPage(task) {\n  const title = String(task.title || 'Untitled task').slice(0, 2000);\n  const properties = {\n    Name: { title: [{ text: { content: title } }] },\n    Assignee: { people: task.assigneeId ? [{ id: task.assigneeId }] : [] },\n    Status: { status: { name: 'Not started' } },\n    Priority: { select: { name: task.priority || 'Medium' } },\n    Origin: { select: { name: 'Meeting' } },\n    'Drive file ID': { rich_text: [{ text: { content: task.driveFileId || '' } }] },\n    'Drive URL': { url: task.driveUrl || null },\n  };\n\n  if (task.due) {\n    properties['Due date'] = { date: { start: task.due } };\n  }\n\n  const children = [];\n  if (task.meetingTitle) {\n    children.push({\n      object: 'block',\n      type: 'paragraph',\n      paragraph: {\n        rich_text: [{ type: 'text', text: { content: `From meeting: ${String(task.meetingTitle).slice(0, 1800)}` } }],\n      },\n    });\n  }\n  if (task.notes) {\n    children.push({\n      object: 'block',\n      type: 'paragraph',\n      paragraph: {\n        rich_text: [{ type: 'text', text: { content: String(task.notes).slice(0, 1900) } }],\n      },\n    });\n  }\n\n  return {\n    parent: { database_id: TASKS_DATABASE_ID },\n    properties,\n    children,\n  };\n}\n\nconst parsed = $('Parse and map assignees').first().json;\nconst query = $input.first().json || {};\nreturn [{ json: skipDuplicateTasks(parsed, query) }];"
       }
     },
     {
@@ -377,7 +431,7 @@
         320
       ],
       "parameters": {
-        "jsCode": "const t = $input.first().json;\nconst title = String(t.title || 'Untitled task').slice(0, 2000);\nconst properties = {\n  Name: { title: [{ text: { content: title } }] },\n  Assignee: { people: t.assigneeId ? [{ id: t.assigneeId }] : [] },\n  Status: { status: { name: 'Not started' } },\n  Priority: { select: { name: t.priority || 'Medium' } },\n  Origin: { select: { name: 'Meeting' } },\n  'Drive file ID': { rich_text: [{ text: { content: t.driveFileId || '' } }] },\n  'Drive URL': { url: t.driveUrl || null },\n};\n\nif (t.due) {\n  properties['Due date'] = { date: { start: t.due } };\n}\n\nconst children = [];\nif (t.meetingTitle) {\n  children.push({\n    object: 'block',\n    type: 'paragraph',\n    paragraph: {\n      rich_text: [{ type: 'text', text: { content: `From meeting: ${String(t.meetingTitle).slice(0, 1800)}` } }],\n    },\n  });\n}\nif (t.notes) {\n  children.push({\n    object: 'block',\n    type: 'paragraph',\n    paragraph: {\n      rich_text: [{ type: 'text', text: { content: String(t.notes).slice(0, 1900) } }],\n    },\n  });\n}\n\nreturn [{\n  json: {\n    parent: { database_id: \"3bc0b26fcc4e8057b7ade1cdf5a67e6e\" },\n    properties,\n    children,\n  },\n}];"
+        "jsCode": "const TASKS_DATABASE_ID = '3bc0b26fcc4e8057b7ade1cdf5a67e6e';\nconst MIN_NOTE_CHARS = 80;\n\nconst PEOPLE = {\n  antoine: '3bcd872b-594c-8157-a68b-0002ec224796',\n  martin: '3bcd872b-594c-81b9-acfe-0002ebe41550',\n  roman: '3bcd872b-594c-81a9-bf7d-00029eb21064',\n};\n\nconst ALIASES = {\n  antoine: 'antoine',\n  'antoine bejarano': 'antoine',\n  'antoine bejarano alvarez': 'antoine',\n  'antoine@save5hours.ch': 'antoine',\n  martin: 'martin',\n  'martin@save5hours.ch': 'martin',\n  roman: 'roman',\n  ronald: 'roman',\n  'roman cajka': 'roman',\n  'roman@save5hours.ch': 'roman',\n  'roman.cajka@gmail.com': 'roman',\n};\n\nfunction noteTextIsReady(text) {\n  return String(text || '').replace(/\\s+/g, ' ').trim().length >= MIN_NOTE_CHARS;\n}\n\nfunction extractJson(text) {\n  const raw = String(text || '');\n  const fenced = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  const body = fenced ? fenced[1] : raw;\n  const start = body.indexOf('{');\n  const end = body.lastIndexOf('}');\n  if (start === -1 || end === -1) {\n    throw new Error(`OpenRouter did not return JSON. Preview: ${raw.slice(0, 400)}`);\n  }\n  return JSON.parse(body.slice(start, end + 1));\n}\n\nfunction mapAssignee(value) {\n  const key = String(value || '').trim().toLowerCase();\n  const mapped = ALIASES[key] || (PEOPLE[key] ? key : 'antoine');\n  return { key: mapped, id: PEOPLE[mapped] };\n}\n\nfunction mapPriority(value) {\n  const p = String(value || 'Medium');\n  if (p === 'High' || p === 'Low' || p === 'Medium') return p;\n  const lower = p.toLowerCase();\n  if (lower.includes('high') || lower.includes('urgent')) return 'High';\n  if (lower.includes('low')) return 'Low';\n  return 'Medium';\n}\n\nfunction parseOpenRouterContent(content, meta) {\n  const parsed = extractJson(content);\n  const tasks = (parsed.tasks || []).map((task) => {\n    const person = mapAssignee(task.assignee);\n    const title = String(task.title || '').replace(/\\s+/g, ' ').trim();\n    const due = task.due && /^\\d{4}-\\d{2}-\\d{2}/.test(String(task.due))\n      ? String(task.due).slice(0, 10)\n      : null;\n    return {\n      title,\n      assignee: person.key,\n      assigneeId: person.id,\n      priority: mapPriority(task.priority),\n      due,\n      notes: String(task.notes || '').trim(),\n      meetingTitle: parsed.meeting_title || meta.fileName,\n      driveFileId: meta.fileId,\n      driveUrl: meta.webViewLink,\n    };\n  }).filter((task) => task.title.length > 0);\n\n  return {\n    meetingTitle: parsed.meeting_title || meta.fileName,\n    driveFileId: meta.fileId,\n    driveUrl: meta.webViewLink,\n    taskCount: tasks.length,\n    tasks,\n  };\n}\n\nfunction skipDuplicateTasks(parsed, notionQuery) {\n  const results = Array.isArray(notionQuery && notionQuery.results) ? notionQuery.results : [];\n  const existingTitles = new Set(\n    results.map((page) => {\n      const title = page.properties && page.properties.Name && page.properties.Name.title\n        && page.properties.Name.title[0]\n        ? page.properties.Name.title[0].plain_text\n        : '';\n      return title.trim().toLowerCase();\n    }).filter(Boolean),\n  );\n\n  const tasks = (parsed.tasks || []).filter((task) => {\n    return !existingTitles.has(String(task.title).trim().toLowerCase());\n  });\n\n  return {\n    ...parsed,\n    existingCount: existingTitles.size,\n    skipped: (parsed.tasks || []).length - tasks.length,\n    taskCount: tasks.length,\n    tasks,\n  };\n}\n\nfunction buildNotionPage(task) {\n  const title = String(task.title || 'Untitled task').slice(0, 2000);\n  const properties = {\n    Name: { title: [{ text: { content: title } }] },\n    Assignee: { people: task.assigneeId ? [{ id: task.assigneeId }] : [] },\n    Status: { status: { name: 'Not started' } },\n    Priority: { select: { name: task.priority || 'Medium' } },\n    Origin: { select: { name: 'Meeting' } },\n    'Drive file ID': { rich_text: [{ text: { content: task.driveFileId || '' } }] },\n    'Drive URL': { url: task.driveUrl || null },\n  };\n\n  if (task.due) {\n    properties['Due date'] = { date: { start: task.due } };\n  }\n\n  const children = [];\n  if (task.meetingTitle) {\n    children.push({\n      object: 'block',\n      type: 'paragraph',\n      paragraph: {\n        rich_text: [{ type: 'text', text: { content: `From meeting: ${String(task.meetingTitle).slice(0, 1800)}` } }],\n      },\n    });\n  }\n  if (task.notes) {\n    children.push({\n      object: 'block',\n      type: 'paragraph',\n      paragraph: {\n        rich_text: [{ type: 'text', text: { content: String(task.notes).slice(0, 1900) } }],\n      },\n    });\n  }\n\n  return {\n    parent: { database_id: TASKS_DATABASE_ID },\n    properties,\n    children,\n  };\n}\n\nreturn [{ json: buildNotionPage($input.first().json) }];"
       }
     },
     {
@@ -408,6 +462,9 @@
         "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {}
       },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
       "credentials": {
         "notionApi": {
           "id": "NOTION",
@@ -418,6 +475,17 @@
   ],
   "connections": {
     "Google Drive Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive Trigger (updated)": {
       "main": [
         [
           {
@@ -473,6 +541,17 @@
       ]
     },
     "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Notes have content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notes have content": {
       "main": [
         [
           {

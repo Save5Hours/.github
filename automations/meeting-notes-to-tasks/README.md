@@ -4,6 +4,8 @@ Gemini / Google Meet notes land in Drive as Google Docs. n8n reads each new doc,
 
 This is the right architecture. Drive does **not** POST a native webhook when Gemini saves a file. Use n8n’s **Google Drive Trigger** (poll) on a flat folder, or the optional Apps Script → n8n Webhook path if notes stay nested under Meet Recordings.
 
+Gemini often **creates an empty Doc first** and writes the summary afterwards. The workflow therefore watches **file created** and **file updated**, and it skips notes shorter than 80 characters so the later update becomes the real run.
+
 ```
 Google Meet ends
   → Gemini notes Google Doc in Drive
@@ -58,10 +60,8 @@ The Railway CLI is **installed in this agent environment** (`railway 5.45.10`) b
 ```bash
 cd automations/meeting-notes-to-tasks
 railway login          # or: railway login --browserless
-railway init           # create or link project
-railway add            # if you still need a service
-# Set variables in the dashboard (encryption key, WEBHOOK_URL, volume).
-railway up
+# Set N8N_ENCRYPTION_KEY first. Attach volume /home/node/.n8n in the dashboard.
+./scripts/deploy-railway.sh
 railway domain
 ```
 
@@ -149,7 +149,7 @@ Body:
 
 1. n8n → **Workflows → Import from File** → `n8n/meeting-notes-to-tasks.json`.
 2. Map the four credentials when n8n prompts.
-3. Set the Drive folder ID on **Google Drive Trigger**.
+3. Set the Drive folder ID on **both** Google Drive Trigger nodes (created + updated).
 4. **Save**, then **Publish / Active**.
 5. Test with a Google Doc in that folder, or:
 

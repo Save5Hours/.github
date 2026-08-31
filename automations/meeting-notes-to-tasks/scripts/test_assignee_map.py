@@ -17,9 +17,9 @@ for key, person in mapping["people"].items():
     if uid not in code:
         raise SystemExit(f"{key} Notion id missing from workflow: {uid}")
     for alias in person["aliases"]:
-        if alias == key:
-            continue
-        if f"'{alias}'" not in code and f'"{alias}"' not in code:
+        quoted = f"'{alias}'" in code or f'"{alias}"' in code
+        bare = f"\n  {alias}:" in code or f"\n  {alias} :" in code
+        if not quoted and not bare:
             raise SystemExit(f"alias {alias!r} missing from workflow")
 
 assert mapping["defaultAssignee"] == "antoine"

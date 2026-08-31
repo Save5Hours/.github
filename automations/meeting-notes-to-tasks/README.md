@@ -38,7 +38,7 @@ This agent **cannot** log into Railway (`railway whoami` → Unauthorized). Use 
 1. [railway.app](https://railway.app) → New project → **+ New** → **Docker Image** → `n8nio/n8n:1.123.75`
 2. Generate a public domain.
 3. Set `WEBHOOK_URL=https://YOUR-SERVICE.up.railway.app/`
-4. Set `N8N_PORT=${{PORT}}`, `N8N_PROTOCOL=https`, `GENERIC_TIMEZONE=Europe/Zurich`
+4. Set `N8N_PORT=5678` (and point the Railway domain at port **5678**). Do **not** set `N8N_PORT=${{PORT}}` via the CLI — it interpolates empty and n8n binds port 0.
 5. Set `N8N_ENCRYPTION_KEY` (`openssl rand -hex 32`) **once**. Never rotate it.
 6. Volume at `/home/node/.n8n` (required).
 7. Open the URL, create the owner account, keep it private.

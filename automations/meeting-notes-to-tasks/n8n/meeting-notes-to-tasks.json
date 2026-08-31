@@ -1,0 +1,598 @@
+{
+  "name": "Meeting notes \u2192 HQ Tasks",
+  "nodes": [
+    {
+      "id": "note-overview",
+      "name": "How this workflow runs",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        140
+      ],
+      "parameters": {
+        "content": "## Meeting notes \u2192 HQ Tasks\n\n1. **Google Drive Trigger** (recommended): polls a flat Gemini-notes folder for new Google Docs.\n2. **Webhook** (optional): Apps Script / manual `{ \"fileId\": \"...\" }`.\n3. OpenRouter (`openrouter/free`) extracts action items.\n4. Creates rows in HQ **Tasks** with Assignee, Origin=Meeting, Drive file ID.\n\nReplace the Drive folder ID before publishing. Connect the four credentials listed in README.md.",
+        "height": 380,
+        "width": 340,
+        "color": 7
+      }
+    },
+    {
+      "id": "drive-trigger",
+      "name": "Google Drive Trigger",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "REPLACE_ME_GEMINI_NOTES_FOLDER_ID",
+          "mode": "id"
+        },
+        "event": "fileCreated",
+        "options": {
+          "fileType": "application/vnd.google-apps.document"
+        }
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "GOOGLE_DRIVE",
+          "name": "Google Drive (Save 5 Hours)"
+        }
+      }
+    },
+    {
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        460
+      ],
+      "webhookId": "meeting-notes",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "meeting-notes",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "WEBHOOK_SECRET",
+          "name": "Meeting notes webhook secret"
+        }
+      }
+    },
+    {
+      "id": "normalize",
+      "name": "Normalize file",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        320
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first().json || {};\nconst body = item.body && typeof item.body === 'object' ? item.body : {};\n\nconst fileId = item.id || item.fileId || body.id || body.fileId;\nif (!fileId) {\n  throw new Error('Missing Google Drive fileId. Drive Trigger should send file.id; webhook body must be { \"fileId\": \"...\" }.');\n}\n\nconst mimeType = item.mimeType || body.mimeType || 'application/vnd.google-apps.document';\nconst name = item.name || body.name || '';\nconst webViewLink = item.webViewLink || body.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;\n\nreturn [{\n  json: {\n    fileId,\n    name,\n    mimeType,\n    webViewLink,\n  },\n}];"
+      }
+    },
+    {
+      "id": "only-docs",
+      "name": "Only Google Docs",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        320
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "mime-ok",
+              "leftValue": "={{ $json.mimeType }}",
+              "rightValue": "application/vnd.google-apps.document",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "download",
+      "name": "Download Google Doc as text",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        740,
+        320
+      ],
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.fileId }}",
+          "mode": "id"
+        },
+        "options": {
+          "googleFileConversion": {
+            "docsToFormat": "text/plain"
+          }
+        }
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "GOOGLE_DRIVE",
+          "name": "Google Drive (Save 5 Hours)"
+        }
+      }
+    },
+    {
+      "id": "extract",
+      "name": "Extract from File",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        980,
+        320
+      ],
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      }
+    },
+    {
+      "id": "build-or",
+      "name": "Build OpenRouter payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1220,
+        320
+      ],
+      "parameters": {
+        "jsCode": "const text = ($json.data || $json.text || '').toString().slice(0, 24000);\nconst fileName = $('Normalize file').first().json.name || 'Untitled meeting notes';\nconst fileId = $('Normalize file').first().json.fileId;\nconst webViewLink = $('Normalize file').first().json.webViewLink;\n\nconst system = `You extract action items from Google Meet / Gemini notes for Save 5 Hours.\n\nReturn ONLY valid JSON (no markdown) with this shape:\n{\n  \"meeting_title\": \"string\",\n  \"tasks\": [\n    {\n      \"title\": \"short imperative task in English\",\n      \"assignee\": \"antoine\" | \"martin\" | \"roman\",\n      \"priority\": \"High\" | \"Medium\" | \"Low\",\n      \"due\": \"YYYY-MM-DD\" or null,\n      \"notes\": \"one-sentence context\"\n    }\n  ]\n}\n\nTeam mapping (use these keys, not other names):\n- antoine = Antoine Bejarano Alvarez, antoine@save5hours.ch\n- martin = Martin, martin@save5hours.ch\n- roman = Roman Cajka, roman@save5hours.ch, also Ronald / Roman Cajka Gmail\n\nRules:\n- Only create real action items (someone will do something). Skip recap-only sentences.\n- If the owner is unclear, set assignee to \"antoine\".\n- Titles in English, max 80 characters, start with a verb.\n- Prefer one task per person per action. Split \"Antoine brings beers and Martin brings cheese\" into two tasks.\n- If there are no action items, return {\"meeting_title\": \"...\", \"tasks\": []}.`;\n\nconst user = `Meeting document title: ${fileName}\\n\\nNotes:\\n${text || '(empty document)'}`;\n\nreturn [{\n  json: {\n    fileId,\n    fileName,\n    webViewLink,\n    text,\n    openRouterBody: {\n      model: 'openrouter/free',\n      temperature: 0.1,\n      messages: [\n        { role: 'system', content: system },\n        { role: 'user', content: user },\n      ],\n    },\n  },\n}];"
+      }
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1460,
+        320
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "HTTP-Referer",
+              "value": "https://save5hours.ch"
+            },
+            {
+              "name": "X-Title",
+              "value": "Save 5 Hours meeting notes"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.openRouterBody) }}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OPENROUTER",
+          "name": "OpenRouter"
+        }
+      }
+    },
+    {
+      "id": "parse",
+      "name": "Parse and map assignees",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        320
+      ],
+      "parameters": {
+        "jsCode": "\nconst PEOPLE = {\n  antoine: \"3bcd872b-594c-8157-a68b-0002ec224796\",\n  martin: \"3bcd872b-594c-81b9-acfe-0002ebe41550\",\n  roman: \"3bcd872b-594c-81a9-bf7d-00029eb21064\",\n};\n\nconst ALIASES = {\n  'antoine': 'antoine',\n  'antoine bejarano': 'antoine',\n  'antoine bejarano alvarez': 'antoine',\n  'antoine@save5hours.ch': 'antoine',\n  'martin': 'martin',\n  'martin@save5hours.ch': 'martin',\n  'roman': 'roman',\n  'ronald': 'roman',\n  'roman cajka': 'roman',\n  'roman@save5hours.ch': 'roman',\n  'roman.cajka@gmail.com': 'roman',\n};\n\nfunction extractJson(text) {\n  const raw = String(text || '');\n  const fenced = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  const body = fenced ? fenced[1] : raw;\n  const start = body.indexOf('{');\n  const end = body.lastIndexOf('}');\n  if (start === -1 || end === -1) {\n    throw new Error(`OpenRouter did not return JSON. Preview: ${raw.slice(0, 400)}`);\n  }\n  return JSON.parse(body.slice(start, end + 1));\n}\n\nfunction mapAssignee(value) {\n  const key = String(value || '').trim().toLowerCase();\n  const mapped = ALIASES[key] || (PEOPLE[key] ? key : 'antoine');\n  return { key: mapped, id: PEOPLE[mapped] };\n}\n\nfunction mapPriority(value) {\n  const p = String(value || 'Medium');\n  if (p === 'High' || p === 'Low' || p === 'Medium') return p;\n  const lower = p.toLowerCase();\n  if (lower.includes('high') || lower.includes('urgent')) return 'High';\n  if (lower.includes('low')) return 'Low';\n  return 'Medium';\n}\n\nconst http = $input.first().json;\nconst content = http.choices?.[0]?.message?.content || http.content || '';\nconst parsed = extractJson(content);\nconst meta = $('Build OpenRouter payload').first().json;\n\nconst tasks = (parsed.tasks || []).map((task) => {\n  const person = mapAssignee(task.assignee);\n  const title = String(task.title || '').replace(/\\s+/g, ' ').trim();\n  const due = task.due && /^\\d{4}-\\d{2}-\\d{2}/.test(String(task.due))\n    ? String(task.due).slice(0, 10)\n    : null;\n  return {\n    title,\n    assignee: person.key,\n    assigneeId: person.id,\n    priority: mapPriority(task.priority),\n    due,\n    notes: String(task.notes || '').trim(),\n    meetingTitle: parsed.meeting_title || meta.fileName,\n    driveFileId: meta.fileId,\n    driveUrl: meta.webViewLink,\n  };\n}).filter((task) => task.title.length > 0);\n\nreturn [{\n  json: {\n    meetingTitle: parsed.meeting_title || meta.fileName,\n    driveFileId: meta.fileId,\n    driveUrl: meta.webViewLink,\n    model: http.model || 'openrouter/free',\n    taskCount: tasks.length,\n    tasks,\n  },\n}];"
+      }
+    },
+    {
+      "id": "has-tasks",
+      "name": "Has tasks",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        1940,
+        320
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "count-gt-0",
+              "leftValue": "={{ $json.taskCount }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "find-existing",
+      "name": "Find existing tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2180,
+        320
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/3bc0b26fcc4e8057b7ade1cdf5a67e6e/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ filter: { property: 'Drive file ID', rich_text: { equals: $json.driveFileId } }, page_size: 100 }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "notionApi": {
+          "id": "NOTION",
+          "name": "Notion (Save 5 Hours HQ)"
+        }
+      }
+    },
+    {
+      "id": "skip-dupes",
+      "name": "Skip duplicates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        320
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const parsed = $('Parse and map assignees').first().json;\nconst query = $input.first().json || {};\nconst results = Array.isArray(query.results) ? query.results : [];\n\nconst existingTitles = new Set(\n  results.map((page) => {\n    const title = page.properties?.Name?.title?.[0]?.plain_text || '';\n    return title.trim().toLowerCase();\n  }).filter(Boolean),\n);\n\nconst tasks = (parsed.tasks || []).filter((task) => {\n  return !existingTitles.has(String(task.title).trim().toLowerCase());\n});\n\nreturn [{\n  json: {\n    ...parsed,\n    existingCount: existingTitles.size,\n    skipped: (parsed.tasks || []).length - tasks.length,\n    taskCount: tasks.length,\n    tasks,\n  },\n}];"
+      }
+    },
+    {
+      "id": "has-new",
+      "name": "Has new tasks",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        2660,
+        320
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "new-gt-0",
+              "leftValue": "={{ $json.taskCount }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "split",
+      "name": "Split tasks",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        2900,
+        320
+      ],
+      "parameters": {
+        "fieldToSplitOut": "tasks",
+        "options": {}
+      }
+    },
+    {
+      "id": "build-notion",
+      "name": "Build Notion page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3140,
+        320
+      ],
+      "parameters": {
+        "jsCode": "const t = $input.first().json;\nconst title = String(t.title || 'Untitled task').slice(0, 2000);\nconst properties = {\n  Name: { title: [{ text: { content: title } }] },\n  Assignee: { people: t.assigneeId ? [{ id: t.assigneeId }] : [] },\n  Status: { status: { name: 'Not started' } },\n  Priority: { select: { name: t.priority || 'Medium' } },\n  Origin: { select: { name: 'Meeting' } },\n  'Drive file ID': { rich_text: [{ text: { content: t.driveFileId || '' } }] },\n  'Drive URL': { url: t.driveUrl || null },\n};\n\nif (t.due) {\n  properties['Due date'] = { date: { start: t.due } };\n}\n\nconst children = [];\nif (t.meetingTitle) {\n  children.push({\n    object: 'block',\n    type: 'paragraph',\n    paragraph: {\n      rich_text: [{ type: 'text', text: { content: `From meeting: ${String(t.meetingTitle).slice(0, 1800)}` } }],\n    },\n  });\n}\nif (t.notes) {\n  children.push({\n    object: 'block',\n    type: 'paragraph',\n    paragraph: {\n      rich_text: [{ type: 'text', text: { content: String(t.notes).slice(0, 1900) } }],\n    },\n  });\n}\n\nreturn [{\n  json: {\n    parent: { database_id: \"3bc0b26fcc4e8057b7ade1cdf5a67e6e\" },\n    properties,\n    children,\n  },\n}];"
+      }
+    },
+    {
+      "id": "create-notion",
+      "name": "Create Notion task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3380,
+        320
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "credentials": {
+        "notionApi": {
+          "id": "NOTION",
+          "name": "Notion (Save 5 Hours HQ)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Google Drive Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize file": {
+      "main": [
+        [
+          {
+            "node": "Only Google Docs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only Google Docs": {
+      "main": [
+        [
+          {
+            "node": "Download Google Doc as text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Google Doc as text": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Build OpenRouter payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build OpenRouter payload": {
+      "main": [
+        [
+          {
+            "node": "OpenRouter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter": {
+      "main": [
+        [
+          {
+            "node": "Parse and map assignees",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse and map assignees": {
+      "main": [
+        [
+          {
+            "node": "Has tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has tasks": {
+      "main": [
+        [
+          {
+            "node": "Find existing tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find existing tasks": {
+      "main": [
+        [
+          {
+            "node": "Skip duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip duplicates": {
+      "main": [
+        [
+          {
+            "node": "Has new tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has new tasks": {
+      "main": [
+        [
+          {
+            "node": "Split tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split tasks": {
+      "main": [
+        [
+          {
+            "node": "Build Notion page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Notion page": {
+      "main": [
+        [
+          {
+            "node": "Create Notion task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "description": "Gemini / Google Meet notes in Drive \u2192 OpenRouter \u2192 Notion HQ Tasks"
+  }
+}

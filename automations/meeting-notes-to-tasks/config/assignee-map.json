@@ -1,0 +1,35 @@
+{
+  "tasksDatabaseId": "3bc0b26fcc4e8057b7ade1cdf5a67e6e",
+  "tasksDataSource": "collection://3bc0b26f-cc4e-8038-8478-000becdadfa4",
+  "defaultAssignee": "antoine",
+  "people": {
+    "antoine": {
+      "notionUserId": "3bcd872b-594c-8157-a68b-0002ec224796",
+      "email": "antoine@save5hours.ch",
+      "aliases": [
+        "antoine",
+        "antoine bejarano",
+        "antoine bejarano alvarez",
+        "antoine@save5hours.ch"
+      ]
+    },
+    "martin": {
+      "notionUserId": "3bcd872b-594c-81b9-acfe-0002ebe41550",
+      "email": "martin@save5hours.ch",
+      "aliases": ["martin", "martin@save5hours.ch"]
+    },
+    "roman": {
+      "notionUserId": "3bcd872b-594c-81a9-bf7d-00029eb21064",
+      "email": "roman@save5hours.ch",
+      "aliases": [
+        "roman",
+        "ronald",
+        "roman cajka",
+        "roman@save5hours.ch",
+        "roman.cajka@gmail.com"
+      ]
+    }
+  },
+  "statusOnCreate": "Not started",
+  "originOnCreate": "Meeting"
+}

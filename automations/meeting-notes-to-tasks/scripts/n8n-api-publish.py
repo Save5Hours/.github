@@ -296,40 +296,45 @@ def main() -> int:
                         }
             print(f"reusing credentials {sorted(mapping)}")
 
-    if set(mapping) != {"NOTION", "OPENROUTER", "WEBHOOK_SECRET"}:
-        notion_cred = create_credential(
-            api,
-            "Notion (Save 5 Hours HQ)",
-            "notionApi",
-            {"apiKey": notion},
-        )
-        or_value = openrouter if openrouter.startswith("Bearer ") else f"Bearer {openrouter}"
-        or_cred = create_credential(
-            api,
-            "OpenRouter",
-            "httpHeaderAuth",
-            {"name": "Authorization", "value": or_value},
-        )
-        wh_cred = create_credential(
-            api,
-            "Meeting notes webhook secret",
-            "httpHeaderAuth",
-            {"name": "X-Webhook-Secret", "value": webhook},
-        )
-        if not (notion_cred and or_cred and wh_cred):
+    required = {"NOTION", "OPENROUTER", "WEBHOOK_SECRET"}
+    missing = required - set(mapping)
+    if missing:
+        created: dict[str, dict] = {}
+        if "NOTION" in missing:
+            created["NOTION"] = create_credential(
+                api,
+                "Notion (Save 5 Hours HQ)",
+                "notionApi",
+                {"apiKey": notion},
+            )
+        if "OPENROUTER" in missing:
+            or_value = openrouter if openrouter.startswith("Bearer ") else f"Bearer {openrouter}"
+            created["OPENROUTER"] = create_credential(
+                api,
+                "OpenRouter",
+                "httpHeaderAuth",
+                {"name": "Authorization", "value": or_value},
+            )
+        if "WEBHOOK_SECRET" in missing:
+            created["WEBHOOK_SECRET"] = create_credential(
+                api,
+                "Meeting notes webhook secret",
+                "httpHeaderAuth",
+                {"name": "X-Webhook-Secret", "value": webhook},
+            )
+        if any(created.get(key) is None for key in missing):
             return 1
-        mapping["NOTION"] = {
-            "id": notion_cred["id"],
-            "name": notion_cred.get("name") or "Notion (Save 5 Hours HQ)",
+        names = {
+            "NOTION": "Notion (Save 5 Hours HQ)",
+            "OPENROUTER": "OpenRouter",
+            "WEBHOOK_SECRET": "Meeting notes webhook secret",
         }
-        mapping["OPENROUTER"] = {
-            "id": or_cred["id"],
-            "name": or_cred.get("name") or "OpenRouter",
-        }
-        mapping["WEBHOOK_SECRET"] = {
-            "id": wh_cred["id"],
-            "name": wh_cred.get("name") or "Meeting notes webhook secret",
-        }
+        for key in missing:
+            cred = created[key]
+            mapping[key] = {
+                "id": cred["id"],
+                "name": cred.get("name") or names[key],
+            }
 
     existing_google = mapping.get("GOOGLE_DRIVE") or {}
     if existing_google.get("id") in (None, "", "GOOGLE_DRIVE"):
@@ -372,6 +377,9 @@ def main() -> int:
     existing = next((w for w in workflows if w.get("name") == WF_NAME), None)
     if existing:
         wf_id = existing["id"]
+        if existing.get("active"):
+            code, body = api.request("POST", f"/api/v1/workflows/{wf_id}/deactivate")
+            print(f"deactivate {wf_id} status={code}")
         code, body = api.request("PUT", f"/api/v1/workflows/{wf_id}", payload)
         print(f"update workflow {wf_id} status={code} active={body.get('active') if isinstance(body, dict) else None}")
     else:

@@ -8,7 +8,7 @@
  * Never logs secret values. Does not set N8N_LICENSE_ACTIVATION_KEY.
  */
 import { spawnSync } from 'node:child_process';
-import { createHash, randomUUID } from 'node:crypto';
+import { createCipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 
@@ -19,6 +19,61 @@ const SRC = process.env.SAVE5HOURS_WF_SRC || '/opt/save5hours/meeting-notes-to-t
 const USER_FOLDER = process.env.N8N_USER_FOLDER || '/home/node/.n8n';
 const OUT_DIR = '/tmp/save5hours-n8n-provision';
 const DB_PATH = `${USER_FOLDER}/database.sqlite`;
+
+function encryptionKey() {
+  if (process.env.N8N_ENCRYPTION_KEY && process.env.N8N_ENCRYPTION_KEY.trim()) {
+    return process.env.N8N_ENCRYPTION_KEY.trim();
+  }
+  const configPath = `${USER_FOLDER}/config`;
+  if (existsSync(configPath)) {
+    const cfg = JSON.parse(readFileSync(configPath, 'utf8'));
+    if (cfg.encryptionKey) return String(cfg.encryptionKey);
+  }
+  throw new Error('N8N_ENCRYPTION_KEY missing');
+}
+
+function encryptCredentialData(data) {
+  const salt = randomBytes(8);
+  const password = Buffer.concat([Buffer.from(encryptionKey(), 'binary'), salt]);
+  const hash1 = createHash('md5').update(password).digest();
+  const hash2 = createHash('md5').update(Buffer.concat([hash1, password])).digest();
+  const iv = createHash('md5').update(Buffer.concat([hash2, password])).digest();
+  const key = Buffer.concat([hash1, hash2]);
+  const cipher = createCipheriv('aes-256-cbc', key, iv);
+  const encrypted = Buffer.concat([cipher.update(JSON.stringify(data), 'utf8'), cipher.final()]);
+  const header = Buffer.from('53616c7465645f5f', 'hex');
+  return Buffer.concat([header, salt, encrypted]).toString('base64');
+}
+
+function upsertCredentials(database, credsList, project) {
+  if (!database || !credsList.length) return;
+  const now = new Date().toISOString().replace('T', ' ').replace('Z', '');
+  for (const cred of credsList) {
+    database.prepare('DELETE FROM shared_credentials WHERE credentialsId = ?').run(cred.id);
+    database.prepare('DELETE FROM credentials_entity WHERE id = ? OR (name = ? AND type = ?)').run(
+      cred.id,
+      cred.name,
+      cred.type,
+    );
+    database.prepare(
+      `INSERT INTO credentials_entity
+        (id, name, data, type, createdAt, updatedAt, isManaged, isGlobal)
+       VALUES (?, ?, ?, ?, ?, ?, 0, 0)`,
+    ).run(cred.id, cred.name, encryptCredentialData(cred.data), cred.type, now, now);
+    if (project) {
+      database.prepare(
+        `INSERT OR IGNORE INTO shared_credentials
+          (credentialsId, projectId, role, createdAt, updatedAt)
+         VALUES (?, ?, 'credential:owner', ?, ?)`,
+      ).run(cred.id, project, now, now);
+    }
+  }
+  try {
+    database.prepare('PRAGMA wal_checkpoint(TRUNCATE)').run();
+  } catch {
+    // ignore
+  }
+}
 
 function envPresent(name) {
   return Boolean(process.env[name] && String(process.env[name]).trim());
@@ -221,47 +276,11 @@ if (envPresent('GOOGLE_OAUTH_CLIENT_ID') && envPresent('GOOGLE_OAUTH_CLIENT_SECR
 }
 
 if (creds.length) {
-  if (db) {
-    for (const cred of creds) {
-      try {
-        db.prepare('DELETE FROM shared_credentials WHERE credentialsId = ?').run(cred.id);
-        db.prepare('DELETE FROM credentials_entity WHERE id = ? OR (name = ? AND type = ?)').run(
-          cred.id,
-          cred.name,
-          cred.type,
-        );
-      } catch (error) {
-        console.error('save5hours: could not replace credential', cred.name, error.message);
-      }
-    }
-  }
-  const credFile = `${OUT_DIR}/credentials.json`;
-  writeFileSync(credFile, `${JSON.stringify(creds, null, 2)}\n`);
-  closeDb();
-  const args = [
-    'n8n',
-    'import:credentials',
-    '--input',
-    credFile,
-  ];
-  if (projectId) args.push('--projectId', projectId);
-  else if (userId) args.push('--userId', userId);
-  console.log(`save5hours: importing credentials (${creds.map((c) => c.name).join(', ')})`);
-  if (!run(args)) {
-    console.error('save5hours: credential import failed; paste them in the n8n Credentials UI');
-  }
-  reopenDb();
-  if (db && projectId) {
-    for (const cred of creds) {
-      try {
-        db.prepare(
-          `INSERT OR IGNORE INTO shared_credentials (credentialsId, projectId, role, createdAt, updatedAt)
-           VALUES (?, ?, 'credential:owner', datetime('now'), datetime('now'))`,
-        ).run(cred.id, projectId);
-      } catch {
-        // import:credentials already shared them
-      }
-    }
+  try {
+    upsertCredentials(db, creds, projectId);
+    console.log(`save5hours: wrote credentials (${creds.map((c) => c.name).join(', ')})`);
+  } catch (error) {
+    console.error('save5hours: credential write failed; paste them in the n8n Credentials UI', error.message);
   }
 }
 

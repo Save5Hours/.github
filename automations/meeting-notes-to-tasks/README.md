@@ -16,7 +16,7 @@ Google Meet ends
 
 Example: notes say Roman makes paella, Antoine brings beers, Martin brings cheese → three tasks on the **By person** board.
 
-**Live n8n (1.123.75):** [https://n8n-production-192e.up.railway.app/](https://n8n-production-192e.up.railway.app/) — Railway project `save5hours-n8n`. OpenRouter is already on this instance. Remaining: a Notion **internal** integration token (`NOTION_API_KEY` or n8n credential `Notion (Save 5 Hours HQ)`), then a Gemini Drive folder ID or the Apps Script webhook. After those land, `./scripts/n8n-check-and-dry-run.py` activates the workflow and POSTs the paella fixture to `/webhook/meeting-notes`.
+**Live n8n (1.123.75):** [https://n8n-production-192e.up.railway.app/](https://n8n-production-192e.up.railway.app/) — Railway project `save5hours-n8n`. Workflow **Meeting notes → HQ Tasks** is Active. OpenRouter + Notion already wrote HQ Tasks from a webhook dry-run (`Drive file ID` = `inline-*`). Remaining: a real Google Doc. Run **`verifyDrivePath`** in `scripts/apps-script-drive-webhook.js` (one Run: creates a Doc, POSTs `{ fileId, text }` to `/webhook/meeting-notes`, installs the 1-minute trigger). Do not re-POST the paella fixture.
 
 ## What you paste where
 
@@ -161,8 +161,10 @@ Production webhook URL after publish:
 Body:
 
 ```json
-{ "fileId": "GOOGLE_DOC_FILE_ID" }
+{ "fileId": "GOOGLE_DOC_FILE_ID", "name": "Gemini notes", "text": "..." }
 ```
+
+Apps Script sends `fileId` **and** `text` so n8n does not need Google OAuth on this path. `{ "text": "..." }` alone becomes `Drive file ID = inline-*` (dry-run only).
 
 ---
 
@@ -210,7 +212,7 @@ See `config/assignee-map.json`. If you change people, edit that file **and** the
 n8n’s Drive Trigger only sees **direct children** of the watched folder. If Gemini writes `Meet Recordings / <meeting> / notes`, either:
 
 - Create a shared folder `Gemini meeting notes` and save/shortcut docs there, or
-- Deploy `scripts/apps-script-drive-webhook.js` bound to the Workspace account, set a 1-minute time trigger, and keep the n8n **Webhook** node published.
+- Deploy `scripts/apps-script-drive-webhook.js` bound to the Workspace account. Set `WEBHOOK_SECRET` (and optional `FOLDER_ID`). Run **`verifyDrivePath` once** — it creates a real Google Doc, POSTs `{ fileId, text }` to n8n, and installs the 1-minute trigger. Keep the n8n **Webhook** node published.
 
 ## Rollback
 

@@ -17,15 +17,25 @@
  *      WEBHOOK_SECRET  same value as n8n Header Auth "Meeting notes webhook secret"
  *      FOLDER_ID       optional; Drive folder id
  *      FOLDER_NAME     optional; default "Meet Recordings" if FOLDER_ID is empty
- * 4. Run **installMinuteTrigger** once (creates the 1-minute trigger).
- * 5. Optional: run **listCandidateFolders** and paste a folder URL on the HQ Drive task.
+ * 4. Run **verifyDrivePath** once (creates a real Google Doc, POSTs it, and
+ *    installs the 1-minute trigger). Optional: **listCandidateFolders**.
  *
+ * Keep VERIFY_NOTES in sync with fixtures/drive-verify-notes.txt.
  * The n8n workflow must be Active. Header name is X-Webhook-Secret.
  */
 var MIN_NOTE_CHARS = 80;
 var DEFAULT_WEBHOOK =
   "https://n8n-production-192e.up.railway.app/webhook/meeting-notes";
 var DEFAULT_FOLDER_NAME = "Meet Recordings";
+var VERIFY_FOLDER_NAME = "Gemini meeting notes (n8n)";
+var VERIFY_DOC_NAME = "Gemini notes — Drive path verification (n8n)";
+var VERIFY_NOTES =
+  "Gemini notes — Drive path verification (n8n)\n\n" +
+  "Attendees: Antoine Bejarano Alvarez, Martin, Roman Cajka.\n\n" +
+  "Actions agreed:\n" +
+  "- Antoine will publish the Drive webhook runbook in HQ this week.\n" +
+  "- Martin will review HQ Tasks with Origin Meeting after the Drive file lands.\n" +
+  "- Roman will confirm the Meet Recordings folder URL on the Drive confirmation task.\n";
 
 function installMinuteTrigger() {
   ScriptApp.getProjectTriggers().forEach(function (trigger) {
@@ -37,13 +47,49 @@ function installMinuteTrigger() {
 }
 
 function listCandidateFolders() {
-  ["Meet Recordings", "Gemini meeting notes", "Gemini notes"].forEach(function (name) {
-    const it = DriveApp.getFoldersByName(name);
-    while (it.hasNext()) {
-      const folder = it.next();
-      Logger.log(name + " " + folder.getId() + " " + folder.getUrl());
-    }
-  });
+  [DEFAULT_FOLDER_NAME, "Gemini meeting notes", VERIFY_FOLDER_NAME].forEach(
+    function (name) {
+      const it = DriveApp.getFoldersByName(name);
+      while (it.hasNext()) {
+        const folder = it.next();
+        Logger.log(name + " " + folder.getId() + " " + folder.getUrl());
+      }
+    },
+  );
+}
+
+/**
+ * One Run: create a real Google Doc, POST {fileId, text} to n8n, install the
+ * 1-minute trigger. HQ Tasks must then show a Drive file ID that is not inline-*.
+ */
+function verifyDrivePath() {
+  const props = PropertiesService.getScriptProperties();
+  const webhookUrl = props.getProperty("WEBHOOK_URL") || DEFAULT_WEBHOOK;
+  const secret = required_(props, "WEBHOOK_SECRET");
+  const folder = ensureFolder_(props);
+
+  const doc = DocumentApp.create(VERIFY_DOC_NAME);
+  doc.getBody().setText(VERIFY_NOTES);
+  doc.saveAndClose();
+
+  const file = DriveApp.getFileById(doc.getId());
+  file.moveTo(folder);
+
+  const text = DocumentApp.openById(file.getId()).getBody().getText();
+  const code = postNote_(webhookUrl, secret, file, text);
+  if (code >= 200 && code < 300) {
+    props.setProperty("fp_" + file.getId(), fingerprint_(compact_(text)));
+  }
+
+  installMinuteTrigger();
+  Logger.log("HTTP " + code);
+  Logger.log("FOLDER_ID " + folder.getId());
+  Logger.log("FOLDER_URL " + folder.getUrl());
+  Logger.log("FILE_ID " + file.getId());
+  Logger.log("FILE_URL " + file.getUrl());
+  if (code < 200 || code >= 300) {
+    throw new Error("n8n webhook HTTP " + code);
+  }
 }
 
 function checkNewMeetingNotes() {
@@ -66,34 +112,47 @@ function checkNewMeetingNotes() {
     if (file.getLastUpdated().getTime() <= lastMs) return;
 
     const text = DocumentApp.openById(file.getId()).getBody().getText();
-    const compact = String(text || "").replace(/\s+/g, " ").trim();
+    const compact = compact_(text);
     if (compact.length < MIN_NOTE_CHARS) return;
 
     const fp = fingerprint_(compact);
     const fpKey = "fp_" + file.getId();
     if (props.getProperty(fpKey) === fp) return;
 
-    const response = UrlFetchApp.fetch(webhookUrl, {
-      method: "post",
-      contentType: "application/json",
-      headers: { "X-Webhook-Secret": secret },
-      payload: JSON.stringify({
-        fileId: file.getId(),
-        name: file.getName(),
-        mimeType: file.getMimeType(),
-        webViewLink: file.getUrl(),
-        text: text,
-      }),
-      muteHttpExceptions: true,
-    });
-
-    const code = response.getResponseCode();
+    const code = postNote_(webhookUrl, secret, file, text);
     if (code >= 200 && code < 300) {
       props.setProperty(fpKey, fp);
     }
   });
 
   props.setProperty("lastChecked", nowIso);
+}
+
+function postNote_(webhookUrl, secret, file, text) {
+  const response = UrlFetchApp.fetch(webhookUrl, {
+    method: "post",
+    contentType: "application/json",
+    headers: { "X-Webhook-Secret": secret },
+    payload: JSON.stringify({
+      fileId: file.getId(),
+      name: file.getName(),
+      mimeType: file.getMimeType(),
+      webViewLink: file.getUrl(),
+      text: text,
+    }),
+    muteHttpExceptions: true,
+  });
+  return response.getResponseCode();
+}
+
+function ensureFolder_(props) {
+  try {
+    return resolveFolder_(props);
+  } catch (err) {
+    const folder = DriveApp.createFolder(VERIFY_FOLDER_NAME);
+    props.setProperty("FOLDER_ID", folder.getId());
+    return folder;
+  }
 }
 
 function resolveFolder_(props) {
@@ -116,6 +175,10 @@ function walkFolder_(folder, acc) {
   while (files.hasNext()) acc.push(files.next());
   const subs = folder.getFolders();
   while (subs.hasNext()) walkFolder_(subs.next(), acc);
+}
+
+function compact_(text) {
+  return String(text || "").replace(/\s+/g, " ").trim();
 }
 
 function fingerprint_(text) {

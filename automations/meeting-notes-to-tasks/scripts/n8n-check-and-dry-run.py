@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Inspect live n8n (no secret values) and dry-run notes → HQ Tasks when ready.
+"""Inspect live n8n (no secret values). Default does not POST the paella fixture.
 
 Exit codes:
-  0  dry-run posted (or --status-only and instance is healthy)
+  0  instance healthy (or --dry-run posted)
   2  waiting on Notion token / inactive workflow
   1  error
 """
@@ -23,19 +23,26 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "fixtures" / "paella-notes.txt"
 N8N_URL = "https://n8n-production-192e.up.railway.app"
 WEBHOOK_PATH = "/webhook/meeting-notes"
-WF_ID = "KfrQb6c79aJPPxYE"
+WF_NAME = "Meeting notes → HQ Tasks"
+PROJECT = "48651271-91e5-4a40-8783-6971a438c2a3"
 SERVICE = "n8n"
 ENV = "production"
 
+# Live n8n 1.123 on this volume stores sqlite under N8N_USER_FOLDER/.n8n/.
+# Provision also writes /home/node/.n8n/database.sqlite (inactive copy).
 # Single line: railway ssh + node -e cannot take embedded newlines.
 INSPECT_JS = (
     'const {DatabaseSync}=require("node:sqlite");const fs=require("fs");'
-    'const p="/home/node/.n8n/database.sqlite";'
-    'const out={db_exists:fs.existsSync(p),uid:process.getuid(),credentials:[],workflows:[]};'
-    'if(fs.existsSync(p)){const db=new DatabaseSync(p,{readOnly:true});'
-    'out.credentials=db.prepare("SELECT id, name, type FROM credentials_entity ORDER BY name").all();'
-    'out.workflows=db.prepare("SELECT id, name, active FROM workflow_entity").all();}'
-    'process.stdout.write(JSON.stringify(out));'
+    'const paths=["/home/node/.n8n/.n8n/database.sqlite","/home/node/.n8n/database.sqlite"];'
+    'const dbs=[];'
+    'for(const p of paths){const row={path:p,exists:fs.existsSync(p),credentials:[],workflows:[]};'
+    'if(row.exists){const db=new DatabaseSync(p,{readOnly:true});'
+    'row.credentials=db.prepare("SELECT id, name, type FROM credentials_entity ORDER BY name").all();'
+    'row.workflows=db.prepare("SELECT id, name, active FROM workflow_entity").all();}'
+    'dbs.push(row);}'
+    'const live=dbs.find(d=>(d.workflows||[]).some(w=>w.active))||dbs.find(d=>d.exists)||dbs[0];'
+    'process.stdout.write(JSON.stringify({db_exists:!!(live&&live.exists),live_db:live&&live.path,'
+    'uid:process.getuid(),credentials:live?live.credentials:[],workflows:live?live.workflows:[],dbs}));'
 )
 
 
@@ -58,9 +65,13 @@ def run(cmd: list[str], *, timeout: int = 60, secret: bool = False) -> subproces
     )
 
 
+def railway_scope() -> list[str]:
+    return ["--project", PROJECT, "--environment", ENV, "--service", SERVICE]
+
+
 def railway_vars() -> dict[str, str]:
     proc = run(
-        ["railway", "variables", "--service", SERVICE, "--environment", ENV, "--json"],
+        ["railway", "variables", *railway_scope(), "--json"],
         timeout=45,
     )
     if proc.returncode != 0:
@@ -80,10 +91,7 @@ def inspect_sqlite() -> dict:
         [
             "railway",
             "ssh",
-            "--service",
-            SERVICE,
-            "--environment",
-            ENV,
+            *railway_scope(),
             "--",
             f"node -e {json.dumps(INSPECT_JS)}",
         ],
@@ -104,19 +112,33 @@ def cred_ids(info: dict) -> set[str]:
     return {str(row.get("id") or "") for row in info.get("credentials") or []}
 
 
+def cred_names(info: dict) -> set[str]:
+    return {str(row.get("name") or "") for row in info.get("credentials") or []}
+
+
+def named_workflows(info: dict) -> list[dict]:
+    return [
+        row
+        for row in info.get("workflows") or []
+        if str(row.get("name") or "") == WF_NAME
+    ]
+
+
 def workflow_active(info: dict) -> bool:
-    for row in info.get("workflows") or []:
-        if str(row.get("id")) == WF_ID:
-            return bool(row.get("active"))
-    return False
+    return any(bool(row.get("active")) for row in named_workflows(info))
 
 
 def print_status(vars_: dict[str, str], info: dict) -> None:
     ids = cred_ids(info)
     log("n8n status (secrets redacted)")
     log(f"  url: {N8N_URL}/")
-    log(f"  sqlite credentials: {sorted(ids) or '(none)'}")
-    log(f"  workflow {WF_ID} active: {workflow_active(info)}")
+    log(f"  live sqlite: {info.get('live_db') or '(none)'}")
+    log(f"  sqlite credential ids: {sorted(ids) or '(none)'}")
+    log(f"  sqlite credential names: {sorted(cred_names(info)) or '(none)'}")
+    for row in named_workflows(info):
+        log(f"  workflow {row.get('id')} active: {bool(row.get('active'))}")
+    if not named_workflows(info):
+        log(f"  workflow {WF_NAME!r}: missing")
     for key in (
         "OPENROUTER_API_KEY",
         "NOTION_API_KEY",
@@ -137,11 +159,11 @@ def activate_via_ssh() -> None:
     cmd = (
         "if command -v gosu >/dev/null 2>&1; then "
         "exec gosu node env HOME=/home/node N8N_USER_FOLDER=/home/node/.n8n "
-        f"n8n update:workflow --id {WF_ID} --active true; "
+        f"n8n update:workflow --id 9JlE8lA1TQdlxw0S --active true; "
         "else echo NO_GOSU; exit 1; fi"
     )
     proc = run(
-        ["railway", "ssh", "--service", SERVICE, "--environment", ENV, "--", cmd],
+        ["railway", "ssh", *railway_scope(), "--", cmd],
         timeout=120,
     )
     out = (proc.stdout or "") + (proc.stderr or "")
@@ -156,10 +178,7 @@ def ensure_activate_var() -> None:
             "railway",
             "variable",
             "set",
-            "--service",
-            SERVICE,
-            "--environment",
-            ENV,
+            *railway_scope(),
             "N8N_ACTIVATE_WORKFLOW=true",
         ],
         timeout=60,
@@ -170,7 +189,7 @@ def ensure_activate_var() -> None:
 
 def redeploy() -> None:
     proc = run(
-        ["railway", "redeploy", "--service", SERVICE, "--environment", ENV, "--yes"],
+        ["railway", "redeploy", *railway_scope(), "--yes"],
         timeout=90,
     )
     if proc.returncode != 0:
@@ -231,6 +250,11 @@ def main() -> int:
         action="store_true",
         help="Print redacted status and exit (do not activate or POST).",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="POST the paella fixture (creates duplicate HQ Tasks). Default is status only.",
+    )
     args = parser.parse_args()
 
     vars_ = railway_vars()
@@ -238,14 +262,21 @@ def main() -> int:
     print_status(vars_, info)
 
     ids = cred_ids(info)
-    has_or = "OPENROUTER" in ids or present(vars_, "OPENROUTER_API_KEY")
-    has_notion_sqlite = "NOTION" in ids
+    names = cred_names(info)
+    has_or = "OpenRouter" in names or "OPENROUTER" in ids or present(vars_, "OPENROUTER_API_KEY")
+    has_notion_sqlite = "Notion (Save 5 Hours HQ)" in names or "NOTION" in ids
     has_notion_railway = present(vars_, "NOTION_API_KEY")
-    has_webhook = "WEBHOOK_SECRET" in ids or present(vars_, "N8N_WEBHOOK_SECRET")
+    has_webhook = (
+        "Meeting notes webhook secret" in names
+        or "WEBHOOK_SECRET" in ids
+        or present(vars_, "N8N_WEBHOOK_SECRET")
+    )
     active = workflow_active(info)
 
-    if args.status_only:
+    if args.status_only or not args.dry_run:
         if has_or and has_webhook and (has_notion_sqlite or has_notion_railway) and active:
+            if not args.dry_run and not args.status_only:
+                log("status ok; skip paella POST (pass --dry-run to duplicate the fixture)")
             return 0
         return 2
 
@@ -263,7 +294,8 @@ def main() -> int:
         info = inspect_sqlite()
         print_status(railway_vars(), info)
         ids = cred_ids(info)
-        has_notion_sqlite = "NOTION" in ids
+        names = cred_names(info)
+        has_notion_sqlite = "Notion (Save 5 Hours HQ)" in names or "NOTION" in ids
         active = workflow_active(info)
 
     if not has_notion_sqlite:

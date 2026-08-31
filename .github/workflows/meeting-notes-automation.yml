@@ -29,6 +29,7 @@ jobs:
           python3 scripts/test_assignee_map.py
           python3 -m py_compile scripts/n8n-check-and-dry-run.py
           python3 -m py_compile scripts/n8n-api-publish.py
+          python3 -m py_compile scripts/watch-drive-hq.py
           git diff --exit-code n8n/meeting-notes-to-tasks.json
       - name: Transform unit tests (paella → three assignees)
         working-directory: automations/meeting-notes-to-tasks

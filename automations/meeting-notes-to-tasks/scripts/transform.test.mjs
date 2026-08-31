@@ -33,6 +33,30 @@ test('empty Gemini doc is not ready; paella notes are', () => {
   assert.equal(noteTextIsReady(notes), true);
 });
 
+test('Apps Script VERIFY_NOTES matches drive-verify fixture', () => {
+  const notes = readFileSync(join(root, 'fixtures/drive-verify-notes.txt'), 'utf8').trim();
+  const src = readFileSync(join(root, 'scripts/apps-script-drive-webhook.js'), 'utf8');
+  assert.match(src, /function verifyDrivePath\(/);
+  for (const line of notes.split('\n').filter(Boolean)) {
+    assert.ok(src.includes(line), line);
+  }
+});
+
+test('Apps Script payload keeps the real Drive fileId and notes text', () => {
+  const notes = readFileSync(join(root, 'fixtures/drive-verify-notes.txt'), 'utf8');
+  assert.equal(noteTextIsReady(notes), true);
+  const payload = normalizeMeetingInput({
+    fileId: '1DriveVerifyFileIdNotInline',
+    name: 'Gemini notes — Drive path verification (n8n)',
+    mimeType: 'application/vnd.google-apps.document',
+    webViewLink: 'https://docs.google.com/document/d/1DriveVerifyFileIdNotInline/edit',
+    text: notes,
+  });
+  assert.equal(payload.fileId, '1DriveVerifyFileIdNotInline');
+  assert.equal(payload.inlineText, notes.trim());
+  assert.doesNotMatch(payload.fileId, /^inline-/);
+});
+
 test('normalizeMeetingInput accepts Drive fileId or inline webhook text', () => {
   const fromDrive = normalizeMeetingInput({
     id: 'abc123',

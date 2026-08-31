@@ -10,15 +10,43 @@
 import { spawnSync } from 'node:child_process';
 import { createCipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 const PLACEHOLDER = 'REPLACE_ME_GEMINI_NOTES_FOLDER_ID';
 const WF_NAME = 'Meeting notes → HQ Tasks';
 const WF_ID = 'KfrQb6c79aJPPxYE';
 const SRC = process.env.SAVE5HOURS_WF_SRC || '/opt/save5hours/meeting-notes-to-tasks.json';
-const USER_FOLDER = process.env.N8N_USER_FOLDER || '/home/node/.n8n';
+const BASE_FOLDER = process.env.N8N_USER_FOLDER || '/home/node/.n8n';
+
+function resolveLiveDbPath(baseFolder) {
+  const candidates = [`${baseFolder}/.n8n/database.sqlite`, `${baseFolder}/database.sqlite`];
+  let fallback = candidates.find((path) => existsSync(path)) || candidates[1];
+  let best = fallback;
+  let bestActive = -1;
+  for (const path of candidates) {
+    if (!existsSync(path)) continue;
+    try {
+      const db = new DatabaseSync(path, { readOnly: true });
+      const row = db.prepare(
+        'SELECT COUNT(*) AS n FROM workflow_entity WHERE active = 1',
+      ).get();
+      db.close();
+      const active = Number(row?.n || 0);
+      if (active > bestActive) {
+        bestActive = active;
+        best = path;
+      }
+    } catch {
+      // unreadable copy
+    }
+  }
+  return best;
+}
+
+const DB_PATH = resolveLiveDbPath(BASE_FOLDER);
+const USER_FOLDER = dirname(DB_PATH);
 const OUT_DIR = '/tmp/save5hours-n8n-provision';
-const DB_PATH = `${USER_FOLDER}/database.sqlite`;
 
 function encryptionKey() {
   if (process.env.N8N_ENCRYPTION_KEY && process.env.N8N_ENCRYPTION_KEY.trim()) {
@@ -91,7 +119,9 @@ function run(args) {
     env: {
       ...process.env,
       HOME: '/home/node',
-      N8N_USER_FOLDER: USER_FOLDER,
+      // CLI import still uses the volume root. Direct sqlite writes use USER_FOLDER
+      // (this host stores the live DB at /home/node/.n8n/.n8n).
+      N8N_USER_FOLDER: BASE_FOLDER,
     },
   });
   if (result.stdout) process.stdout.write(result.stdout);
@@ -123,6 +153,7 @@ console.log(
   `uid=${process.getuid?.() ?? 'unknown'}`,
   `home=${process.env.HOME || ''}`,
   `userFolder=${USER_FOLDER}`,
+  `db=${DB_PATH}`,
 );
 
 mkdirSync(OUT_DIR, { recursive: true });

@@ -40,14 +40,64 @@ export function driveCallerAllowed(email) {
 
 export function parseDriveFileId(text) {
   const raw = String(text || '');
-  const doc = raw.match(/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]{10,})/i)
+  const doc = raw.match(/docs\.google\.com\/document\/(?:u\/\d+\/)?d\/([a-zA-Z0-9_-]{10,})/i)
     || raw.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]{10,})/i)
+    || raw.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]{10,})/i)
     || raw.match(/FILE_ID\s+([a-zA-Z0-9_-]{10,})/i);
   const candidate = doc ? doc[1] : raw.trim();
   if (!candidate || candidate.toLowerCase().startsWith('inline-')) return '';
   if (!/^[a-zA-Z0-9_-]{10,}$/.test(candidate)) return '';
   if (candidate.toUpperCase() === 'REPLACE_ME_GEMINI_NOTES_FOLDER_ID') return '';
   return candidate;
+}
+
+export function firstScalar(value) {
+  if (Array.isArray(value)) return firstScalar(value[0]);
+  if (value == null) return '';
+  if (typeof value === 'object') return '';
+  return String(value).trim();
+}
+
+/** Flatten an n8n webhook item (JSON or form POST) into a Drive Doc payload. */
+export function extractPublicDrivePayload(src) {
+  const root = src && typeof src === 'object' ? src : {};
+  let body = {};
+  if (root.body && typeof root.body === 'object' && !Array.isArray(root.body)) {
+    body = root.body;
+  } else if (typeof root.body === 'string' && root.body.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(root.body);
+      if (parsed && typeof parsed === 'object') body = parsed;
+    } catch {
+      body = {};
+    }
+  }
+  const query = root.query && typeof root.query === 'object' ? root.query : {};
+  const layers = [body, query, root];
+  const pick = (...keys) => {
+    for (const layer of layers) {
+      for (const key of keys) {
+        const value = firstScalar(layer[key]);
+        if (value) return value;
+      }
+    }
+    return '';
+  };
+  const url = pick('url', 'driveUrl', 'docUrl');
+  const fileId = parseDriveFileId(`${pick('fileId', 'id')}\n${url}`);
+  const text = pick('text', 'notes', 'inlineText');
+  const ready = noteTextIsReady(text);
+  const name = pick('name', 'title') || 'Gemini notes';
+  return {
+    fileId,
+    name,
+    mimeType: 'application/vnd.google-apps.document',
+    webViewLink: fileId ? `https://docs.google.com/document/d/${fileId}/edit` : '',
+    exportUrl: fileId ? `https://docs.google.com/document/d/${fileId}/export?format=txt` : '',
+    text: ready ? text : '',
+    inlineText: ready ? text : '',
+    hasText: ready,
+  };
 }
 
 export function noteTextIsReady(text) {

@@ -9,6 +9,7 @@ import {
   buildNotionPage,
   driveCallerAllowed,
   extractJson,
+  extractPublicDrivePayload,
   mapAssignee,
   normalizeMeetingInput,
   noteTextIsReady,
@@ -53,8 +54,44 @@ test('parseDriveFileId reads Google Doc URLs and rejects inline ids', () => {
     parseDriveFileId('https://docs.google.com/document/d/1DocVerifyFileIdNotInline99/edit'),
     '1DocVerifyFileIdNotInline99',
   );
+  assert.equal(
+    parseDriveFileId('https://docs.google.com/document/u/0/d/1DocVerifyFileIdNotInline99/edit'),
+    '1DocVerifyFileIdNotInline99',
+  );
+  assert.equal(
+    parseDriveFileId('https://drive.google.com/open?id=1DocVerifyFileIdNotInline99'),
+    '1DocVerifyFileIdNotInline99',
+  );
   assert.equal(parseDriveFileId('inline-15616df3'), '');
   assert.equal(parseDriveFileId('1BareFileIdFromHqTask'), '1BareFileIdFromHqTask');
+});
+
+test('extractPublicDrivePayload reads n8n form POST with fileId + text', () => {
+  const notes = readFileSync(join(root, 'fixtures/drive-verify-notes.txt'), 'utf8');
+  const fromForm = extractPublicDrivePayload({
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: {
+      fileId: '1DocVerifyFileIdNotInline99',
+      url: 'https://docs.google.com/document/d/1DocVerifyFileIdNotInline99/edit',
+      name: 'Gemini notes — Drive path verification (n8n)',
+      text: notes,
+    },
+  });
+  assert.equal(fromForm.fileId, '1DocVerifyFileIdNotInline99');
+  assert.equal(fromForm.hasText, true);
+  assert.equal(fromForm.inlineText, notes.trim());
+  assert.doesNotMatch(fromForm.fileId, /^inline-/);
+
+  const urlOnly = extractPublicDrivePayload({
+    url: 'https://docs.google.com/document/d/1DocVerifyFileIdNotInline99/edit',
+  });
+  assert.equal(urlOnly.fileId, '1DocVerifyFileIdNotInline99');
+  assert.equal(urlOnly.hasText, false);
+  assert.equal(urlOnly.inlineText, '');
+
+  const empty = extractPublicDrivePayload({ body: {} });
+  assert.equal(empty.fileId, '');
+  assert.equal(empty.hasText, false);
 });
 
 test('driveCallerAllowed is Save 5 Hours plus known organizer Gmail', () => {

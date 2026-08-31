@@ -61,26 +61,34 @@ def request(api_key: str, method: str, path: str, body=None):
 
 def setup_html(source: str) -> str:
     escaped = html.escape(source)
-    return f"""<!doctype html>
+    return """<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Connect Gemini Drive notes</title>
   <style>
-    body {{ font: 16px/1.45 system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; color: #111; }}
-    ol {{ padding-left: 1.3rem; }}
-    a {{ color: #0b57d0; }}
-    button {{ font: inherit; padding: .4rem .8rem; cursor: pointer; }}
-    textarea {{ width: 100%; min-height: 22rem; font: 12px/1.4 ui-monospace, monospace; }}
-    .ok {{ color: #0b7; display: none; margin-left: .5rem; }}
-    .warn {{ color: #a40; }}
+    body { font: 16px/1.45 system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; color: #111; }
+    ol { padding-left: 1.3rem; }
+    a { color: #0b57d0; }
+    button { font: inherit; padding: .4rem .8rem; cursor: pointer; }
+    textarea { width: 100%; min-height: 22rem; font: 12px/1.4 ui-monospace, monospace; }
+    .ok { color: #0b7; display: none; margin-left: .5rem; }
+    .warn { color: #a40; }
+    .bookmark { display: inline-block; padding: .35rem .7rem; border: 1px dashed #0b57d0; border-radius: 6px; text-decoration: none; font-weight: 600; }
   </style>
 </head>
 <body>
   <h1>Connect Gemini Drive notes</h1>
   <p>n8n already writes HQ Tasks from OpenRouter. You do <strong>not</strong> need an n8n login.</p>
-  <h2>Option 1 — public Doc link (fastest check)</h2>
+  <h2>Option 1 — bookmarklet (fastest; private Docs work)</h2>
+  <p>Drag this link to your bookmarks bar. Open a Gemini notes tab on <strong>docs.google.com</strong> (stay signed in), then click the bookmark. Your browser exports the Doc and POSTs <code>fileId</code> + text. No sharing change. No Apps Script. No n8n Sign in.</p>
+  <p>
+    <a class="bookmark" id="bookmarklet" href="#">Send this Doc to HQ Tasks</a>
+    <button type="button" id="copybm">Copy bookmarklet</button>
+    <span class="ok" id="bmok">copied</span>
+  </p>
+  <h2>Option 2 — public Doc link</h2>
   <p>Share one Gemini Google Doc as <strong>Anyone with the link can view</strong>, paste the URL, send. n8n exports the text and writes HQ Tasks with that Drive file ID.</p>
   <p>
     <input id="docurl" type="url" placeholder="https://docs.google.com/document/d/…/edit" style="font:inherit;width:min(100%,28rem);padding:.3rem .5rem"/>
@@ -88,7 +96,7 @@ def setup_html(source: str) -> str:
     <span class="ok" id="docok">sent</span>
     <span class="warn" id="docerr"></span>
   </p>
-  <h2>Option 2 — Apps Script (Meet Recordings tree + 1-minute trigger)</h2>
+  <h2>Option 3 — Apps Script (Meet Recordings tree + 1-minute trigger)</h2>
   <p>Sign in to Google as the Meet organizer (<code>@save5hours.ch</code> or the known organizer Gmail).</p>
   <ol>
     <li>Open <a href="https://script.google.com" target="_blank" rel="noopener">script.google.com</a> → <strong>New project</strong>.</li>
@@ -97,28 +105,59 @@ def setup_html(source: str) -> str:
     <li>Paste <code>FOLDER_URL</code> / <code>FILE_ID</code> from the execution log into <a href="https://app.notion.com/p/3cd0b26fcc4e819bb9ead19d74fb64a6" target="_blank" rel="noopener">Confirm the Drive folder</a>.</li>
   </ol>
   <p class="warn">Do not re-POST the paella fixture. The script POSTs to <code>/webhook/meeting-notes-drive</code> with a Google access token (not the n8n Header Auth secret).</p>
-  <textarea id="src" readonly>{escaped}</textarea>
+  <textarea id="src" readonly>""" + escaped + """</textarea>
   <p><a href="/webhook/apps-script-source">plain-text source</a></p>
   <script>
-    document.getElementById('copy').onclick = async () => {{
+    const bookmarklet = document.getElementById('bookmarklet');
+    const endpoint = location.origin + '/webhook/public-drive-doc';
+    const src = [
+      '(async()=>{try{',
+      'const parts=location.pathname.split("/");',
+      'let id="";',
+      'for(let i=0;i<parts.length;i++){if(parts[i]==="d"&&parts[i+1]&&parts[i+1].length>=10)id=parts[i+1];}',
+      'if(!id){alert("Open a Google Doc tab first (docs.google.com).");return;}',
+      'const res=await fetch("https://docs.google.com/document/d/"+id+"/export?format=txt",{credentials:"include"});',
+      'const text=await res.text();',
+      'const compact=text.replace(/\\\\s+/g," ").trim();',
+      'if(!res.ok||compact.length<80||(/<html/i.test(text)&&/sign in/i.test(text))){',
+      'alert("Could not read this Doc. Stay on the docs.google.com tab while signed in.");return;}',
+      'const f=document.createElement("form");f.method="POST";f.action=' + JSON.stringify(endpoint) + ';',
+      'const add=(n,v)=>{const t=document.createElement("textarea");t.name=n;t.value=v;f.appendChild(t);};',
+      'add("fileId",id);add("url",location.href);add("name",document.title||"Gemini notes");add("text",text);',
+      'document.documentElement.appendChild(f);f.submit();',
+      '}catch(err){alert(String(err));}})()'
+    ].join("");
+    const href = 'javascript:' + encodeURIComponent(src);
+    bookmarklet.href = href;
+    bookmarklet.onclick = (event) => {
+      if (!location.hostname.includes('docs.google')) {
+        event.preventDefault();
+        alert('Drag this link to your bookmarks bar, then click it on a Google Doc tab.');
+      }
+    };
+    document.getElementById('copybm').onclick = async () => {
+      await navigator.clipboard.writeText(href);
+      document.getElementById('bmok').style.display = 'inline';
+    };
+    document.getElementById('copy').onclick = async () => {
       await navigator.clipboard.writeText(document.getElementById('src').value);
       document.getElementById('ok').style.display = 'inline';
-    }};
-    document.getElementById('senddoc').onclick = async () => {{
+    };
+    document.getElementById('senddoc').onclick = async () => {
       const err = document.getElementById('docerr');
       const ok = document.getElementById('docok');
       err.textContent = '';
       ok.style.display = 'none';
       const url = document.getElementById('docurl').value.trim();
-      if (!url) {{ err.textContent = 'paste a Google Doc URL'; return; }}
-      const res = await fetch('/webhook/public-drive-doc', {{
+      if (!url) { err.textContent = 'paste a Google Doc URL'; return; }
+      const res = await fetch('/webhook/public-drive-doc', {
         method: 'POST',
-        headers: {{ 'Content-Type': 'application/json' }},
-        body: JSON.stringify({{ url }}),
-      }});
-      if (!res.ok) {{ err.textContent = 'HTTP ' + res.status; return; }}
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      if (!res.ok) { err.textContent = 'HTTP ' + res.status; return; }
       ok.style.display = 'inline';
-    }};
+    };
   </script>
 </body>
 </html>
@@ -226,6 +265,9 @@ def main() -> int:
             return 1
         if 'id="senddoc"' not in page or "public-drive-doc" not in page:
             print("blocked: drive-setup page missing public Doc form")
+            return 1
+        if 'id="bookmarklet"' not in page or "Send this Doc to HQ Tasks" not in page:
+            print("blocked: drive-setup page missing bookmarklet")
             return 1
         if 'id="secret"' in page or "filledSource" in page:
             print("blocked: drive-setup page still asks for the n8n webhook secret")

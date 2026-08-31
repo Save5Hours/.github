@@ -12,6 +12,10 @@ def main() -> None:
     log = "HTTP 200\nFOLDER_URL " + folder_url + "\nFILE_ID 1DriveVerifyFileIdNotInline\n"
     assert folder_id_from(folder_url) == "1AbCdefghijKLmnopQRstuVWXyz0123456"
     assert file_id_from(doc_url) == "1DocVerifyFileIdNotInline99"
+    assert (
+        file_id_from("https://docs.google.com/document/u/0/d/1DocVerifyFileIdNotInline99/edit")
+        == "1DocVerifyFileIdNotInline99"
+    )
     parsed = parse_drive_refs(log, doc_url)
     assert parsed["folder_id"] == "1AbCdefghijKLmnopQRstuVWXyz0123456"
     assert parsed["file_id"] == "1DriveVerifyFileIdNotInline"

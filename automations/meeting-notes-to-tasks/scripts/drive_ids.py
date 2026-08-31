@@ -10,7 +10,8 @@ FOLDER_RE = re.compile(
     re.I,
 )
 DOC_RE = re.compile(
-    r"(?:docs\.google\.com/document/d/|drive\.google\.com/file/d/|FILE_ID\s+|FILE_URL\s+\S*?/(?:d|file)/)"
+    r"(?:docs\.google\.com/document/(?:u/\d+/)?d/|drive\.google\.com/file/d/"
+    r"|drive\.google\.com/open\?id=|FILE_ID\s+|FILE_URL\s+\S*?/(?:d|file)/)"
     r"([a-zA-Z0-9_-]{10,})",
     re.I,
 )

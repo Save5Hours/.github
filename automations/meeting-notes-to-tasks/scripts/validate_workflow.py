@@ -22,6 +22,7 @@ required = [
     "Allow Drive caller",
     "Public Drive Doc",
     "Parse Drive URL",
+    "Has Doc text already",
     "Export public Doc",
     "Merge public Doc",
     "Manual test",
@@ -60,13 +61,15 @@ assert conns["Extract Google token"]["main"][0][0]["node"] == "Google userinfo"
 assert conns["Google userinfo"]["main"][0][0]["node"] == "Allow Drive caller"
 assert conns["Allow Drive caller"]["main"][0][0]["node"] == "Normalize file"
 assert conns["Public Drive Doc"]["main"][0][0]["node"] == "Parse Drive URL"
-assert conns["Parse Drive URL"]["main"][0][0]["node"] == "Export public Doc"
+assert conns["Parse Drive URL"]["main"][0][0]["node"] == "Has Doc text already"
+assert conns["Has Doc text already"]["main"][0][0]["node"] == "Normalize file"
+assert conns["Has Doc text already"]["main"][1][0]["node"] == "Export public Doc"
 assert conns["Export public Doc"]["main"][0][0]["node"] == "Merge public Doc"
 assert conns["Merge public Doc"]["main"][0][0]["node"] == "Normalize file"
 assert nodes["Public Drive Doc"]["parameters"]["path"] == "public-drive-doc"
 parse_public = nodes["Parse Drive URL"]["parameters"]["jsCode"]
-if "parseDriveFileId" not in parse_public:
-    raise SystemExit("Parse Drive URL must use parseDriveFileId")
+if "extractPublicDrivePayload" not in parse_public:
+    raise SystemExit("Parse Drive URL must use extractPublicDrivePayload")
 assert nodes["Drive Apps Script"]["parameters"]["path"] == "meeting-notes-drive"
 assert nodes["Webhook"]["parameters"]["authentication"] == "headerAuth"
 assert "authentication" not in nodes["Drive Apps Script"]["parameters"] or not nodes["Drive Apps Script"]["parameters"].get("authentication")

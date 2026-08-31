@@ -126,22 +126,11 @@ return [{ json: original }];
 """.strip()
 
 PARSE_PUBLIC_CODE = TRANSFORM_JS + "\n\n" + r"""
-const src = $input.first().json || {};
-const body = src.body && typeof src.body === 'object' ? src.body : {};
-const blob = [body.url, body.driveUrl, body.fileId, src.url, src.fileId].filter(Boolean).join('\n');
-const fileId = parseDriveFileId(blob);
-if (!fileId) {
-  throw new Error('Paste a Google Doc URL (Anyone with the link can view)');
+const parsed = extractPublicDrivePayload($input.first().json || {});
+if (!parsed.fileId) {
+  throw new Error('Paste a Google Doc URL, or send fileId + text from the bookmarklet');
 }
-return [{
-  json: {
-    fileId,
-    name: body.name || src.name || 'Gemini notes',
-    mimeType: 'application/vnd.google-apps.document',
-    webViewLink: `https://docs.google.com/document/d/${fileId}/edit`,
-    exportUrl: `https://docs.google.com/document/d/${fileId}/export?format=txt`,
-  },
-}];
+return [{ json: parsed }];
 """.strip()
 
 MERGE_PUBLIC_CODE = TRANSFORM_JS + "\n\n" + r"""
@@ -173,7 +162,7 @@ nodes = [
         "typeVersion": 1,
         "position": [-420, 140],
         "parameters": {
-            "content": "## Meeting notes → HQ Tasks\n\nGemini often creates an empty Doc and fills it after the meeting. This workflow watches **file created** and **file updated**, skips notes shorter than 80 characters, then sends text to OpenRouter (`openrouter/free`) and writes HQ Tasks.\n\n**Host n8n 1.123.x** (this repo Dockerfile). n8n 2.x needs extra task runners for Code nodes.\n\n`/webhook/meeting-notes` needs Header Auth (dry-run). `/webhook/meeting-notes-drive` is Apps Script (Google userinfo allowlist). `/webhook/public-drive-doc` exports a Doc shared as Anyone with the link.",
+            "content": "## Meeting notes → HQ Tasks\n\nGemini often creates an empty Doc and fills it after the meeting. This workflow watches **file created** and **file updated**, skips notes shorter than 80 characters, then sends text to OpenRouter (`openrouter/free`) and writes HQ Tasks.\n\n**Host n8n 1.123.x** (this repo Dockerfile). n8n 2.x needs extra task runners for Code nodes.\n\n`/webhook/meeting-notes` needs Header Auth (dry-run). `/webhook/meeting-notes-drive` is Apps Script (Google userinfo allowlist). `/webhook/public-drive-doc` accepts a public Doc URL, or `fileId`+`text` from the Drive-setup bookmarklet (private Docs; no sharing change).",
             "height": 380,
             "width": 340,
             "color": 7,
@@ -350,7 +339,20 @@ nodes = [
             "httpMethod": "POST",
             "path": "public-drive-doc",
             "responseMode": "onReceived",
-            "options": {},
+            "options": {
+                "responseData": (
+                    "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"/>"
+                    "<title>Sent to n8n</title><body style=\"font:16px/1.45 system-ui;padding:2rem\">"
+                    "<p>Received. OpenRouter will create HQ Tasks with this Drive file ID in about 30 seconds.</p>"
+                    "<p><a href=\"https://app.notion.com/p/3cd0b26fcc4e819bb9ead19d74fb64a6\">"
+                    "Confirm the Drive folder</a></p></body></html>"
+                ),
+                "responseHeaders": {
+                    "entries": [
+                        {"name": "Content-Type", "value": "text/html; charset=utf-8"}
+                    ]
+                },
+            },
         },
     },
     {
@@ -362,11 +364,42 @@ nodes = [
         "parameters": {"jsCode": PARSE_PUBLIC_CODE},
     },
     {
+        "id": "has-doc-text",
+        "name": "Has Doc text already",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [440, 1100],
+        "parameters": {
+            "conditions": {
+                "options": {
+                    "caseSensitive": True,
+                    "leftValue": "",
+                    "typeValidation": "loose",
+                    "version": 2,
+                },
+                "conditions": [
+                    {
+                        "id": "doc-text-ok",
+                        "leftValue": "={{ $json.inlineText }}",
+                        "rightValue": "",
+                        "operator": {
+                            "type": "string",
+                            "operation": "notEmpty",
+                            "singleValue": True,
+                        },
+                    }
+                ],
+                "combinator": "and",
+            },
+            "options": {},
+        },
+    },
+    {
         "id": "export-public-doc",
         "name": "Export public Doc",
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
-        "position": [440, 1100],
+        "position": [660, 1240],
         "parameters": {
             "method": "GET",
             "url": "={{ $json.exportUrl }}",
@@ -384,7 +417,7 @@ nodes = [
         "name": "Merge public Doc",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
-        "position": [660, 1100],
+        "position": [880, 1240],
         "parameters": {"jsCode": MERGE_PUBLIC_CODE},
     },
     {
@@ -724,7 +757,13 @@ connections = {
     "Google userinfo": conn("Allow Drive caller"),
     "Allow Drive caller": conn("Normalize file"),
     "Public Drive Doc": conn("Parse Drive URL"),
-    "Parse Drive URL": conn("Export public Doc"),
+    "Parse Drive URL": conn("Has Doc text already"),
+    "Has Doc text already": {
+        "main": [
+            [{"node": "Normalize file", "type": "main", "index": 0}],
+            [{"node": "Export public Doc", "type": "main", "index": 0}],
+        ]
+    },
     "Export public Doc": conn("Merge public Doc"),
     "Merge public Doc": conn("Normalize file"),
     "Manual test": conn("Set test fileId"),

@@ -167,7 +167,11 @@ def main() -> int:
     openrouter = env.get("OPENROUTER_API_KEY") or rail.get("OPENROUTER_API_KEY") or ""
     webhook = rail.get("N8N_WEBHOOK_SECRET") or env.get("N8N_WEBHOOK_SECRET") or ""
     folder = (env.get("GEMINI_NOTES_FOLDER_ID") or rail.get("GEMINI_NOTES_FOLDER_ID") or "").strip()
-    secrets = [api_key, notion, openrouter, webhook]
+    google_id = (env.get("GOOGLE_OAUTH_CLIENT_ID") or rail.get("GOOGLE_OAUTH_CLIENT_ID") or "").strip()
+    google_secret = (
+        env.get("GOOGLE_OAUTH_CLIENT_SECRET") or rail.get("GOOGLE_OAUTH_CLIENT_SECRET") or ""
+    ).strip()
+    secrets = [api_key, notion, openrouter, webhook, google_secret]
 
     print("n8n API publish (secrets redacted)")
     print(f"  url: {base}")
@@ -176,6 +180,7 @@ def main() -> int:
     print(f"  OPENROUTER_API_KEY: {'yes' if openrouter else 'NO'}")
     print(f"  webhook secret: {'yes' if webhook else 'NO'}")
     print(f"  GEMINI_NOTES_FOLDER_ID: {'yes' if folder else 'NO (Drive triggers disabled)'}")
+    print(f"  GOOGLE_OAUTH_CLIENT_ID: {'yes' if google_id else 'NO'}")
     if not api_key:
         print("blocked: N8N_API_KEY missing from .env")
         return 1
@@ -213,6 +218,7 @@ def main() -> int:
                 "Notion (Save 5 Hours HQ)": "NOTION",
                 "OpenRouter": "OPENROUTER",
                 "Meeting notes webhook secret": "WEBHOOK_SECRET",
+                "Google Drive (Save 5 Hours)": "GOOGLE_DRIVE",
             }
             for node in live.get("nodes") or []:
                 for spec in (node.get("credentials") or {}).values():
@@ -258,6 +264,31 @@ def main() -> int:
             "id": wh_cred["id"],
             "name": wh_cred.get("name") or "Meeting notes webhook secret",
         }
+
+    existing_google = mapping.get("GOOGLE_DRIVE") or {}
+    if existing_google.get("id") in (None, "", "GOOGLE_DRIVE"):
+        mapping.pop("GOOGLE_DRIVE", None)
+        existing_google = {}
+    if google_id and google_secret and not existing_google:
+        google_cred = create_credential(
+            api,
+            "Google Drive (Save 5 Hours)",
+            "googleDriveOAuth2Api",
+            {
+                "serverUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+                "clientId": google_id,
+                "clientSecret": google_secret,
+                "sendAdditionalBodyProperties": False,
+                "additionalBodyProperties": "{}",
+            },
+        )
+        if google_cred:
+            mapping["GOOGLE_DRIVE"] = {
+                "id": google_cred["id"],
+                "name": google_cred.get("name") or "Google Drive (Save 5 Hours)",
+            }
+            print("Google Drive OAuth client stored; Sign in still required in the n8n UI")
+    print(f"  GOOGLE_OAUTH_CLIENT_ID: {'yes' if google_id else 'NO'}")
 
     src = json.loads(WF_SRC.read_text(encoding="utf-8"))
     nodes = apply_drive_folder(src["nodes"], folder)

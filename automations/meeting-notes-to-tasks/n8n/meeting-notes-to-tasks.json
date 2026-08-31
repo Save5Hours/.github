@@ -11,7 +11,7 @@
         140
       ],
       "parameters": {
-        "content": "## Meeting notes \u2192 HQ Tasks\n\nGemini often creates an empty Doc and fills it after the meeting. This workflow watches **file created** and **file updated**, skips notes shorter than 80 characters, then sends text to OpenRouter (`openrouter/free`) and writes HQ Tasks.\n\nReplace both Drive folder IDs before publishing. Connect Google Drive, Notion, OpenRouter, and the webhook secret.",
+        "content": "## Meeting notes \u2192 HQ Tasks\n\nGemini often creates an empty Doc and fills it after the meeting. This workflow watches **file created** and **file updated**, skips notes shorter than 80 characters, then sends text to OpenRouter (`openrouter/free`) and writes HQ Tasks.\n\n**Host n8n 1.123.x** (this repo Dockerfile). n8n 2.x needs extra task runners for Code nodes.\n\nReplace both Drive folder IDs before publishing. For a dry run, set a Google Doc ID on **Set test fileId** and execute **Manual test**. Connect Google Drive, Notion, OpenRouter, and the webhook secret.",
         "height": 380,
         "width": 340,
         "color": 7
@@ -85,6 +85,42 @@
           "id": "GOOGLE_DRIVE",
           "name": "Google Drive (Save 5 Hours)"
         }
+      }
+    },
+    {
+      "id": "manual-trigger",
+      "name": "Manual test",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        680
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "set-test-file",
+      "name": "Set test fileId",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        680
+      ],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "file-id",
+              "name": "fileId",
+              "value": "REPLACE_ME_GOOGLE_DOC_FILE_ID",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
       }
     },
     {
@@ -497,6 +533,28 @@
       ]
     },
     "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual test": {
+      "main": [
+        [
+          {
+            "node": "Set test fileId",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set test fileId": {
       "main": [
         [
           {

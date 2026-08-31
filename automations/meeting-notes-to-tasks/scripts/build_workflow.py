@@ -146,7 +146,7 @@ nodes = [
         "typeVersion": 1,
         "position": [-420, 140],
         "parameters": {
-            "content": "## Meeting notes → HQ Tasks\n\nGemini often creates an empty Doc and fills it after the meeting. This workflow watches **file created** and **file updated**, skips notes shorter than 80 characters, then sends text to OpenRouter (`openrouter/free`) and writes HQ Tasks.\n\nReplace both Drive folder IDs before publishing. Connect Google Drive, Notion, OpenRouter, and the webhook secret.",
+            "content": "## Meeting notes → HQ Tasks\n\nGemini often creates an empty Doc and fills it after the meeting. This workflow watches **file created** and **file updated**, skips notes shorter than 80 characters, then sends text to OpenRouter (`openrouter/free`) and writes HQ Tasks.\n\n**Host n8n 1.123.x** (this repo Dockerfile). n8n 2.x needs extra task runners for Code nodes.\n\nReplace both Drive folder IDs before publishing. For a dry run, set a Google Doc ID on **Set test fileId** and execute **Manual test**. Connect Google Drive, Notion, OpenRouter, and the webhook secret.",
             "height": 380,
             "width": 340,
             "color": 7,
@@ -189,6 +189,36 @@ nodes = [
             "options": {"fileType": "application/vnd.google-apps.document"},
         },
         "credentials": GOOGLE_CREDS,
+    },
+    {
+        "id": "manual-trigger",
+        "name": "Manual test",
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [0, 680],
+        "parameters": {},
+    },
+    {
+        "id": "set-test-file",
+        "name": "Set test fileId",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [220, 680],
+        "parameters": {
+            "mode": "manual",
+            "duplicateItem": False,
+            "assignments": {
+                "assignments": [
+                    {
+                        "id": "file-id",
+                        "name": "fileId",
+                        "value": "REPLACE_ME_GOOGLE_DOC_FILE_ID",
+                        "type": "string",
+                    }
+                ]
+            },
+            "options": {},
+        },
     },
     {
         "id": "webhook",
@@ -499,6 +529,8 @@ connections = {
     "Google Drive Trigger": conn("Normalize file"),
     "Google Drive Trigger (updated)": conn("Normalize file"),
     "Webhook": conn("Normalize file"),
+    "Manual test": conn("Set test fileId"),
+    "Set test fileId": conn("Normalize file"),
     "Normalize file": conn("Only Google Docs"),
     "Only Google Docs": conn("Download Google Doc as text"),
     "Download Google Doc as text": conn("Extract from File"),

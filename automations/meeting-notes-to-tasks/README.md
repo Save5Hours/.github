@@ -31,30 +31,30 @@ OpenRouter, Notion, and Google keys are entered in the **n8n UI**, not as Railwa
 
 ## 1. Railway (host n8n)
 
-This agent **cannot** log into Railway (`railway whoami` → Unauthorized). Fastest path: one-click template in your browser, then import the workflow JSON from this repo.
+This agent **cannot** log into Railway (`railway whoami` → Unauthorized). Use **n8n 1.123.x**, not `latest` / 2.x: this workflow’s Code nodes need the 1.x image (2.x wants a separate task-runner service).
 
-### Option A — One-click template (recommended)
+### Option A — Docker image `n8nio/n8n:1.123.75` (recommended)
 
-[Deploy n8n on Railway](https://railway.com/deploy/n8n-latest)
-
-1. Sign in to Railway in that tab. Wait ~2–3 minutes.
+1. [railway.app](https://railway.app) → New project → **+ New** → **Docker Image** → `n8nio/n8n:1.123.75`
 2. Generate a public domain.
 3. Set `WEBHOOK_URL=https://YOUR-SERVICE.up.railway.app/`
-4. Set `N8N_ENCRYPTION_KEY` (`openssl rand -hex 32`) **once**. Never rotate it.
-5. Confirm a volume at `/home/node/.n8n`.
-6. Open the URL, create the owner account, keep it private.
-7. Import `n8n/meeting-notes-to-tasks.json` (see section 3).
+4. Set `N8N_PORT=${{PORT}}`, `N8N_PROTOCOL=https`, `GENERIC_TIMEZONE=Europe/Zurich`
+5. Set `N8N_ENCRYPTION_KEY` (`openssl rand -hex 32`) **once**. Never rotate it.
+6. Volume at `/home/node/.n8n` (required).
+7. Open the URL, create the owner account, keep it private.
+8. Import `n8n/meeting-notes-to-tasks.json` (see section 3). For a dry run, put a Google Doc ID on **Set test fileId** and click **Manual test**.
+
+Do **not** use [railway.com/deploy/n8n-latest](https://railway.com/deploy/n8n-latest) for this workflow: that template is n8n 2.x.
 
 HQ runbook: [Meeting notes → HQ Tasks (n8n)](https://app.notion.com/p/3cd0b26fcc4e81cd9441f9420d6d00da)
 
-### Option B — This repo / Docker image
+### Option B — This repo
 
 The Railway CLI is installed here (`railway 5.45.10`) but not logged in. From your laptop:
 
 1. [railway.app](https://railway.app) → New project → **Empty project**.
 2. **+ New** → **GitHub repo** → `Save5Hours/.github`  
-   Set **Root Directory** to `automations/meeting-notes-to-tasks`.
-   Or **+ New** → **Docker Image** → `n8nio/n8n`.
+   Set **Root Directory** to `automations/meeting-notes-to-tasks` (Dockerfile is already pinned to 1.123.75).
 3. **Variables** — copy from `.env.example`. Generate the encryption key first:
 
    ```bash

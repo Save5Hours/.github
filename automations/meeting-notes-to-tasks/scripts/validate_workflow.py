@@ -16,6 +16,8 @@ required = [
     "Google Drive Trigger",
     "Google Drive Trigger (updated)",
     "Webhook",
+    "Manual test",
+    "Set test fileId",
     "Normalize file",
     "Notes have content",
     "OpenRouter",

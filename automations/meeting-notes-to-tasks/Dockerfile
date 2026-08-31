@@ -1,4 +1,7 @@
-FROM n8nio/n8n:latest
+FROM n8nio/n8n:1.123.75
 
-# Official n8n image. Railway sets PORT; map it with N8N_PORT=${{PORT}}.
-# Persist /home/node/.n8n with a Railway volume before the first deploy.
+# Pin 1.x so Code nodes run inside this image.
+# n8n 2.x (docker tag latest) expects task runners; do not use it for this workflow
+# unless you also deploy n8nio/runners.
+# Railway: N8N_PORT=${{PORT}}, volume /home/node/.n8n, set N8N_ENCRYPTION_KEY first.
+

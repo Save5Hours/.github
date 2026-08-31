@@ -16,6 +16,10 @@ required = [
     "Google Drive Trigger",
     "Google Drive Trigger (updated)",
     "Webhook",
+    "Drive Apps Script",
+    "Extract Google token",
+    "Google userinfo",
+    "Allow Drive caller",
     "Manual test",
     "Set test fileId",
     "Normalize file",
@@ -47,6 +51,18 @@ if created != "fileCreated" or updated != "fileUpdated":
 conns = data["connections"]
 assert "Google Drive Trigger" in conns
 assert "Webhook" in conns
+assert conns["Drive Apps Script"]["main"][0][0]["node"] == "Extract Google token"
+assert conns["Extract Google token"]["main"][0][0]["node"] == "Google userinfo"
+assert conns["Google userinfo"]["main"][0][0]["node"] == "Allow Drive caller"
+assert conns["Allow Drive caller"]["main"][0][0]["node"] == "Normalize file"
+assert nodes["Drive Apps Script"]["parameters"]["path"] == "meeting-notes-drive"
+assert nodes["Webhook"]["parameters"]["authentication"] == "headerAuth"
+assert "authentication" not in nodes["Drive Apps Script"]["parameters"] or not nodes["Drive Apps Script"]["parameters"].get("authentication")
+allow = nodes["Allow Drive caller"]["parameters"]["jsCode"]
+if "driveCallerAllowed" not in allow:
+    raise SystemExit("Allow Drive caller must check driveCallerAllowed")
+userinfo = nodes["Google userinfo"]["parameters"]["url"]
+assert userinfo == "https://www.googleapis.com/oauth2/v2/userinfo"
 assert conns["Normalize file"]["main"][0][0]["node"] == "Has inline notes"
 assert conns["Has inline notes"]["main"][0][0]["node"] == "Use inline notes"
 assert conns["Has inline notes"]["main"][1][0]["node"] == "Only Google Docs"

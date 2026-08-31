@@ -21,6 +21,23 @@ export const ALIASES = {
   'roman.cajka@gmail.com': 'roman',
 };
 
+/** Google accounts allowed to POST /webhook/meeting-notes-drive (Apps Script). */
+export const DRIVE_CALLER_EXACT = [
+  'antoine@save5hours.ch',
+  'martin@save5hours.ch',
+  'roman@save5hours.ch',
+  'deevlylabs@gmail.com',
+  'antubejar96@gmail.com',
+  'roman.cajka@gmail.com',
+];
+
+export function driveCallerAllowed(email) {
+  const value = String(email || '').trim().toLowerCase();
+  if (!value.includes('@')) return false;
+  if (DRIVE_CALLER_EXACT.includes(value)) return true;
+  return value.endsWith('@save5hours.ch');
+}
+
 export function noteTextIsReady(text) {
   return String(text || '').replace(/\s+/g, ' ').trim().length >= MIN_NOTE_CHARS;
 }

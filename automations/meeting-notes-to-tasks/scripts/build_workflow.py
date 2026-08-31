@@ -115,6 +115,16 @@ BUILD_NOTION_CODE = TRANSFORM_JS + "\n\n" + """
 return $input.all().map((item) => ({ json: buildNotionPage(item.json) }));
 """.strip()
 
+ALLOW_DRIVE_CODE = TRANSFORM_JS + "\n\n" + r"""
+const info = $input.first().json || {};
+const email = info.email || '';
+if (!driveCallerAllowed(email)) {
+  throw new Error('Drive caller is not on the Save 5 Hours allowlist');
+}
+const original = $('Extract Google token').first().json;
+return [{ json: original }];
+""".strip()
+
 NOTION_FILTER_BODY = (
     "={{ JSON.stringify({ filter: { property: 'Drive file ID', rich_text: "
     "{ equals: $json.driveFileId } }, page_size: 100 }) }}"
@@ -128,7 +138,7 @@ nodes = [
         "typeVersion": 1,
         "position": [-420, 140],
         "parameters": {
-            "content": "## Meeting notes → HQ Tasks\n\nGemini often creates an empty Doc and fills it after the meeting. This workflow watches **file created** and **file updated**, skips notes shorter than 80 characters, then sends text to OpenRouter (`openrouter/free`) and writes HQ Tasks.\n\n**Host n8n 1.123.x** (this repo Dockerfile). n8n 2.x needs extra task runners for Code nodes.\n\nSet `GEMINI_NOTES_FOLDER_ID` in Railway (or replace both Drive folder IDs). Webhook can send `{ \"fileId\" }` or `{ \"text\" }` for a dry run. Connect Google Drive, Notion, OpenRouter, and the webhook secret.",
+            "content": "## Meeting notes → HQ Tasks\n\nGemini often creates an empty Doc and fills it after the meeting. This workflow watches **file created** and **file updated**, skips notes shorter than 80 characters, then sends text to OpenRouter (`openrouter/free`) and writes HQ Tasks.\n\n**Host n8n 1.123.x** (this repo Dockerfile). n8n 2.x needs extra task runners for Code nodes.\n\nSet `GEMINI_NOTES_FOLDER_ID` in Railway (or replace both Drive folder IDs). `/webhook/meeting-notes` needs Header Auth (dry-run). `/webhook/meeting-notes-drive` is Apps Script: Google userinfo email on the Save 5 Hours allowlist, no n8n login.",
             "height": 380,
             "width": 340,
             "color": 7,
@@ -222,6 +232,77 @@ nodes = [
                 "name": "Meeting notes webhook secret",
             }
         },
+    },
+    {
+        "id": "webhook-drive",
+        "name": "Drive Apps Script",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [0, 860],
+        "webhookId": "meeting-notes-drive",
+        "parameters": {
+            "httpMethod": "POST",
+            "path": "meeting-notes-drive",
+            "responseMode": "onReceived",
+            "options": {},
+        },
+    },
+    {
+        "id": "extract-google-token",
+        "name": "Extract Google token",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [200, 860],
+        "parameters": {
+            "jsCode": (
+                "const src = $input.first().json || {};\n"
+                "const body = src.body && typeof src.body === 'object' ? src.body : {};\n"
+                "const headers = src.headers || {};\n"
+                "const auth = String(headers.authorization || headers.Authorization || '').trim();\n"
+                "const payload = Object.keys(body).length ? body : src;\n"
+                "let token = String(payload.googleAccessToken || src.googleAccessToken || '').trim();\n"
+                "if (!token && /^bearer\\s+/i.test(auth)) {\n"
+                "  token = auth.replace(/^bearer\\s+/i, '').trim();\n"
+                "}\n"
+                "if (!token) {\n"
+                "  throw new Error('Missing Google access token');\n"
+                "}\n"
+                "const nextBody = { ...payload, googleAccessToken: token };\n"
+                "return [{ json: { ...src, ...nextBody, googleAccessToken: token, body: nextBody } }];\n"
+            ),
+        },
+    },
+    {
+        "id": "google-userinfo",
+        "name": "Google userinfo",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [400, 860],
+        "parameters": {
+            "method": "GET",
+            "url": "https://www.googleapis.com/oauth2/v2/userinfo",
+            "sendHeaders": True,
+            "headerParameters": {
+                "parameters": [
+                    {
+                        "name": "Authorization",
+                        "value": "={{ 'Bearer ' + $json.googleAccessToken }}",
+                    }
+                ]
+            },
+            "options": {"timeout": 15000},
+        },
+        "retryOnFail": True,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+    },
+    {
+        "id": "allow-drive-caller",
+        "name": "Allow Drive caller",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [620, 860],
+        "parameters": {"jsCode": ALLOW_DRIVE_CODE},
     },
     {
         "id": "normalize",
@@ -555,6 +636,10 @@ connections = {
     "Google Drive Trigger": conn("Normalize file"),
     "Google Drive Trigger (updated)": conn("Normalize file"),
     "Webhook": conn("Normalize file"),
+    "Drive Apps Script": conn("Extract Google token"),
+    "Extract Google token": conn("Google userinfo"),
+    "Google userinfo": conn("Allow Drive caller"),
+    "Allow Drive caller": conn("Normalize file"),
     "Manual test": conn("Set test fileId"),
     "Set test fileId": conn("Normalize file"),
     "Normalize file": conn("Has inline notes"),

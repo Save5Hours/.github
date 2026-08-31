@@ -19,7 +19,7 @@ Example: notes say Roman makes paella, Antoine brings beers, Martin brings chees
 **Live n8n (1.123.75):** [https://n8n-production-192e.up.railway.app/](https://n8n-production-192e.up.railway.app/) — Railway project `save5hours-n8n`. Workflow **Meeting notes → HQ Tasks** is Active. OpenRouter + Notion already wrote HQ Tasks from a webhook dry-run (`Drive file ID` = `inline-*`). Remaining: connect Drive. **Do not use `clasp login`** (Google returns `400 invalid_request` for that OAuth client). Either:
 
 - n8n native Google Drive OAuth2 (GCP Web client + Sign in; redirect `https://n8n-production-192e.up.railway.app/rest/oauth2-credential/callback`) plus a **flat** folder ID, or
-- open [n8n Drive setup](https://n8n-production-192e.up.railway.app/webhook/drive-setup), paste the n8n Header Auth value into the page box, **Copy Apps Script**, paste into [script.google.com](https://script.google.com), and run **`verifyDrivePath`** (walks Meet Recordings subfolders; no GCP client).
+- open [n8n Drive setup](https://n8n-production-192e.up.railway.app/webhook/drive-setup), **Copy Apps Script**, paste into [script.google.com](https://script.google.com), and run **`verifyDrivePath`** (walks Meet Recordings subfolders; no GCP client; no n8n login — Google token auth).
 
 Do not re-POST the paella fixture.
 
@@ -151,17 +151,18 @@ The workflow calls `https://openrouter.ai/api/v1/chat/completions` with model **
 
 ### D. Meeting notes webhook secret
 
-Used only if you enable the **Webhook** node (Apps Script / curl tests).
+Used by curl dry-runs. The live Apps Script path is **`/webhook/meeting-notes-drive`** (Google userinfo email on the Save 5 Hours allowlist — no Header Auth, no n8n login).
 
 1. n8n → **Credentials → Header Auth**
    - Name: **`Meeting notes webhook secret`**
    - Header **Name:** `X-Webhook-Secret`
    - Header **Value:** a long random string (`openssl rand -hex 24`)
-2. Send the same header from Apps Script or curl.
+2. Send that header only to `/webhook/meeting-notes`.
 
-Production webhook URL after publish:
+Production URLs after publish:
 
-`https://YOUR-N8N-HOST/webhook/meeting-notes`
+- Apps Script (default): `https://YOUR-N8N-HOST/webhook/meeting-notes-drive`
+- Dry-run / Header Auth: `https://YOUR-N8N-HOST/webhook/meeting-notes`
 
 Body:
 
@@ -169,7 +170,7 @@ Body:
 { "fileId": "GOOGLE_DOC_FILE_ID", "name": "Gemini notes", "text": "..." }
 ```
 
-Apps Script sends `fileId` **and** `text` so n8n does not need Google OAuth on this path. `{ "text": "..." }` alone becomes `Drive file ID = inline-*` (dry-run only).
+Apps Script also sends `googleAccessToken` (`ScriptApp.getOAuthToken()`). `{ "text": "..." }` alone on the Header Auth path becomes `Drive file ID = inline-*` (dry-run only).
 
 ---
 
@@ -217,7 +218,7 @@ See `config/assignee-map.json`. If you change people, edit that file **and** the
 n8n’s Drive Trigger only sees **direct children** of the watched folder. If Gemini writes `Meet Recordings / <meeting> / notes`, either:
 
 - Create a shared folder `Gemini meeting notes` and save/shortcut docs there, or
-- Deploy `scripts/apps-script-drive-webhook.js` bound to the Workspace account. Copy it from [n8n Drive setup](https://n8n-production-192e.up.railway.app/webhook/drive-setup). Paste the n8n Header Auth value into `WEBHOOK_SECRET_PASTE` (or Script property `WEBHOOK_SECRET`). Run **`verifyDrivePath` once** — it creates a real Google Doc, POSTs `{ fileId, text }` to n8n, and installs the 1-minute trigger. Keep the n8n **Webhook** node published.
+- Deploy `scripts/apps-script-drive-webhook.js` bound to the Workspace account. Copy it from [n8n Drive setup](https://n8n-production-192e.up.railway.app/webhook/drive-setup) (no n8n login). Run **`verifyDrivePath` once** — it creates a real Google Doc, POSTs `{ fileId, text, googleAccessToken }` to `/webhook/meeting-notes-drive`, and installs the 1-minute trigger. Google account must be `@save5hours.ch` or a known organizer Gmail.
 
 ## Rollback
 

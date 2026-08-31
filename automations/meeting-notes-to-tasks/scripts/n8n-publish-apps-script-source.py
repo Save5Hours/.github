@@ -72,7 +72,6 @@ def setup_html(source: str) -> str:
     ol {{ padding-left: 1.3rem; }}
     a {{ color: #0b57d0; }}
     button {{ font: inherit; padding: .4rem .8rem; cursor: pointer; }}
-    input[type=password] {{ font: inherit; width: min(100%, 28rem); padding: .3rem .5rem; }}
     textarea {{ width: 100%; min-height: 22rem; font: 12px/1.4 ui-monospace, monospace; }}
     .ok {{ color: #0b7; display: none; margin-left: .5rem; }}
     .warn {{ color: #a40; }}
@@ -80,33 +79,19 @@ def setup_html(source: str) -> str:
 </head>
 <body>
   <h1>Connect Gemini Drive notes</h1>
-  <p>n8n already writes HQ Tasks from OpenRouter. This page only connects <strong>Google Drive</strong>.</p>
+  <p>n8n already writes HQ Tasks from OpenRouter. This page only connects <strong>Google Drive</strong>. You do <strong>not</strong> need an n8n login. Sign in to Google as the Meet organizer (<code>@save5hours.ch</code> or the known organizer Gmail).</p>
   <ol>
-    <li>Open <a href="https://n8n-production-192e.up.railway.app/" target="_blank" rel="noopener">n8n</a> as <code>deevlylabs@gmail.com</code> → Credentials → <strong>Meeting notes webhook secret</strong> → copy the header value into this box (stays in your browser; not sent to n8n):<br/>
-      <input id="secret" type="password" autocomplete="off" placeholder="WEBHOOK_SECRET_PASTE"/>
-    </li>
-    <li>Open <a href="https://script.google.com" target="_blank" rel="noopener">script.google.com</a> as the Meet organizer → <strong>New project</strong>.</li>
-    <li>Click <button type="button" id="copy">Copy Apps Script</button><span class="ok" id="ok">copied</span>, paste into the editor. The copy includes <code>WEBHOOK_SECRET_PASTE</code> if you filled the box.</li>
-    <li>Run <strong>verifyDrivePath</strong>. Authorize Drive/Docs if Google asks.</li>
-    <li>Paste <code>FOLDER_URL</code> / <code>FILE_ID</code> from the log into <a href="https://app.notion.com/p/3cd0b26fcc4e819bb9ead19d74fb64a6" target="_blank" rel="noopener">Confirm the Drive folder</a>.</li>
+    <li>Open <a href="https://script.google.com" target="_blank" rel="noopener">script.google.com</a> → <strong>New project</strong>.</li>
+    <li>Click <button type="button" id="copy">Copy Apps Script</button><span class="ok" id="ok">copied</span> and paste into the editor.</li>
+    <li>Run <strong>verifyDrivePath</strong>. Authorize Drive, Docs, and email if Google asks.</li>
+    <li>Paste <code>FOLDER_URL</code> / <code>FILE_ID</code> from the execution log into <a href="https://app.notion.com/p/3cd0b26fcc4e819bb9ead19d74fb64a6" target="_blank" rel="noopener">Confirm the Drive folder</a>.</li>
   </ol>
-  <p class="warn">Do not paste the webhook secret on the HQ page. Do not re-POST the paella fixture.</p>
+  <p class="warn">Do not re-POST the paella fixture. The script POSTs to <code>/webhook/meeting-notes-drive</code> with a Google access token (not the n8n Header Auth secret).</p>
   <textarea id="src" readonly>{escaped}</textarea>
-  <p><a href="/webhook/apps-script-source">plain-text source</a> (empty secret; fill the box above before Copy).</p>
+  <p><a href="/webhook/apps-script-source">plain-text source</a></p>
   <script>
-    function filledSource() {{
-      const secret = document.getElementById('secret').value.trim();
-      let src = document.getElementById('src').value;
-      if (secret) {{
-        src = src.replace(
-          'var WEBHOOK_SECRET_PASTE = "";',
-          'var WEBHOOK_SECRET_PASTE = ' + JSON.stringify(secret) + ';'
-        );
-      }}
-      return src;
-    }}
     document.getElementById('copy').onclick = async () => {{
-      await navigator.clipboard.writeText(filledSource());
+      await navigator.clipboard.writeText(document.getElementById('src').value);
       document.getElementById('ok').style.display = 'inline';
     }};
   </script>
@@ -176,6 +161,9 @@ def main() -> int:
     if "WEBHOOK_SECRET_PASTE" not in source:
         print("blocked: Apps Script source missing WEBHOOK_SECRET_PASTE")
         return 1
+    if "meeting-notes-drive" not in source or "ScriptApp.getOAuthToken" not in source:
+        print("blocked: Apps Script source missing Drive Google-token path")
+        return 1
     payload = workflow_payload(source)
     code, listed = request(api_key, "GET", "/api/v1/workflows")
     workflows = listed.get("data") if isinstance(listed, dict) else []
@@ -208,10 +196,16 @@ def main() -> int:
         if "verifyDrivePath" not in page or "<!doctype html>" not in page.lower():
             print("blocked: drive-setup page missing HTML")
             return 1
-        if 'id="secret"' not in page or "filledSource" not in page:
-            print("blocked: drive-setup page missing secret box")
+        if 'id="copy"' not in page or "script.google.com" not in page:
+            print("blocked: drive-setup page missing Copy / Apps Script steps")
             return 1
-        if 'WEBHOOK_SECRET_PASTE = "";' not in page:
+        if "meeting-notes-drive" not in page:
+            print("blocked: drive-setup page missing Drive webhook path")
+            return 1
+        if 'id="secret"' in page or "filledSource" in page:
+            print("blocked: drive-setup page still asks for the n8n webhook secret")
+            return 1
+        if 'WEBHOOK_SECRET_PASTE = "' in page and 'WEBHOOK_SECRET_PASTE = "";' not in page:
             print("blocked: setup page leaked a filled webhook secret")
             return 1
     print("apps-script-source and drive-setup webhooks are live")

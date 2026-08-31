@@ -4,28 +4,29 @@
  *
  * Use this when notes sit in per-meeting subfolders (Drive Trigger does not
  * watch children). Sending `text` means n8n does not need Google OAuth for
- * this path — only OpenRouter + Notion + this webhook secret.
+ * this path — only OpenRouter + Notion. Auth is the Google token from
+ * ScriptApp.getOAuthToken() (Save 5 Hours / known organizer emails).
  *
  * Gemini often creates an empty Doc first, then fills it. This script uses
  * lastUpdated and skips notes shorter than 80 characters.
  *
- * Setup (Workspace admin / Meet organizer):
+ * Setup (Workspace admin / Meet organizer) — no n8n login:
  * 1. https://script.google.com → New project → paste this file
- * 2. Put the n8n Header Auth value in WEBHOOK_SECRET_PASTE below
- *    (n8n → Credentials → Meeting notes webhook secret; account deevlylabs@gmail.com).
- *    Script properties WEBHOOK_SECRET still work if you prefer not to paste in code.
- * 3. Run **verifyDrivePath** once (creates a real Google Doc, POSTs {fileId,text},
- *    installs the 1-minute trigger). Log: FOLDER_URL / FILE_ID → HQ Drive task.
+ * 2. Run **verifyDrivePath** once (creates a real Google Doc, POSTs
+ *    {fileId,text,googleAccessToken}, installs the 1-minute trigger).
+ *    Log: FOLDER_URL / FILE_ID → HQ Drive task.
  * Optional Script properties: FOLDER_ID, FOLDER_NAME, WEBHOOK_URL.
+ * Optional WEBHOOK_SECRET_PASTE / WEBHOOK_SECRET only if you point WEBHOOK_URL
+ * at /webhook/meeting-notes (Header Auth). The default Drive path does not.
  *
  * Keep VERIFY_NOTES in sync with fixtures/drive-verify-notes.txt.
- * The n8n workflow must be Active. Header name is X-Webhook-Secret.
+ * The n8n workflow must be Active.
  */
 var MIN_NOTE_CHARS = 80;
 var DEFAULT_WEBHOOK =
-  "https://n8n-production-192e.up.railway.app/webhook/meeting-notes";
+  "https://n8n-production-192e.up.railway.app/webhook/meeting-notes-drive";
 var DEFAULT_FOLDER_NAME = "Meet Recordings";
-// Paste the n8n "Meeting notes webhook secret" value here (not in Notion/git).
+// Optional. Only needed for /webhook/meeting-notes (Header Auth), not the default URL.
 var WEBHOOK_SECRET_PASTE = "";
 var VERIFY_FOLDER_NAME = "Gemini meeting notes (n8n)";
 var VERIFY_DOC_NAME = "Gemini notes — Drive path verification (n8n)";
@@ -129,16 +130,21 @@ function checkNewMeetingNotes() {
 }
 
 function postNote_(webhookUrl, secret, file, text) {
+  const token = ScriptApp.getOAuthToken();
+  const headers = { Authorization: "Bearer " + token };
+  const pasted = String(secret || "").trim();
+  if (pasted) headers["X-Webhook-Secret"] = pasted;
   const response = UrlFetchApp.fetch(webhookUrl, {
     method: "post",
     contentType: "application/json",
-    headers: { "X-Webhook-Secret": secret },
+    headers: headers,
     payload: JSON.stringify({
       fileId: file.getId(),
       name: file.getName(),
       mimeType: file.getMimeType(),
       webViewLink: file.getUrl(),
       text: text,
+      googleAccessToken: token,
     }),
     muteHttpExceptions: true,
   });
@@ -193,11 +199,5 @@ function fingerprint_(text) {
 function webhookSecret_(props) {
   const pasted = String(WEBHOOK_SECRET_PASTE || "").trim();
   if (pasted) return pasted;
-  return required_(props, "WEBHOOK_SECRET");
-}
-
-function required_(props, key) {
-  const value = props.getProperty(key);
-  if (!value) throw new Error("Missing script property: " + key);
-  return value;
+  return String(props.getProperty("WEBHOOK_SECRET") || "").trim();
 }

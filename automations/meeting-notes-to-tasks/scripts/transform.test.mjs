@@ -7,6 +7,7 @@ import test from 'node:test';
 import {
   PEOPLE,
   buildNotionPage,
+  driveCallerAllowed,
   extractJson,
   mapAssignee,
   normalizeMeetingInput,
@@ -38,9 +39,22 @@ test('Apps Script VERIFY_NOTES matches drive-verify fixture', () => {
   const src = readFileSync(join(root, 'scripts/apps-script-drive-webhook.js'), 'utf8');
   assert.match(src, /function verifyDrivePath\(/);
   assert.match(src, /WEBHOOK_SECRET_PASTE/);
+  assert.match(src, /ScriptApp\.getOAuthToken/);
+  assert.match(src, /meeting-notes-drive/);
+  assert.match(src, /googleAccessToken/);
   for (const line of notes.split('\n').filter(Boolean)) {
     assert.ok(src.includes(line), line);
   }
+});
+
+test('driveCallerAllowed is Save 5 Hours plus known organizer Gmail', () => {
+  assert.equal(driveCallerAllowed('antoine@save5hours.ch'), true);
+  assert.equal(driveCallerAllowed('Roman@Save5Hours.ch'), true);
+  assert.equal(driveCallerAllowed('antubejar96@gmail.com'), true);
+  assert.equal(driveCallerAllowed('deevlylabs@gmail.com'), true);
+  assert.equal(driveCallerAllowed('roman.cajka@gmail.com'), true);
+  assert.equal(driveCallerAllowed('stranger@gmail.com'), false);
+  assert.equal(driveCallerAllowed(''), false);
 });
 
 test('Apps Script payload keeps the real Drive fileId and notes text', () => {

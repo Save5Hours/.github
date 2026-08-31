@@ -22,6 +22,7 @@ required = [
     "Allow Drive caller",
     "Public Drive Doc",
     "Parse Drive URL",
+    "Respond public Doc",
     "Has Doc text already",
     "Export public Doc",
     "Merge public Doc",
@@ -61,7 +62,9 @@ assert conns["Extract Google token"]["main"][0][0]["node"] == "Google userinfo"
 assert conns["Google userinfo"]["main"][0][0]["node"] == "Allow Drive caller"
 assert conns["Allow Drive caller"]["main"][0][0]["node"] == "Normalize file"
 assert conns["Public Drive Doc"]["main"][0][0]["node"] == "Parse Drive URL"
-assert conns["Parse Drive URL"]["main"][0][0]["node"] == "Has Doc text already"
+assert conns["Parse Drive URL"]["main"][0][0]["node"] == "Respond public Doc"
+assert conns["Respond public Doc"]["main"][0][0]["node"] == "Has Doc text already"
+assert nodes["Public Drive Doc"]["parameters"]["responseMode"] == "responseNode"
 assert conns["Has Doc text already"]["main"][0][0]["node"] == "Normalize file"
 assert conns["Has Doc text already"]["main"][1][0]["node"] == "Export public Doc"
 assert conns["Export public Doc"]["main"][0][0]["node"] == "Merge public Doc"

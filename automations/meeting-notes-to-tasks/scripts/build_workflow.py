@@ -338,21 +338,8 @@ nodes = [
         "parameters": {
             "httpMethod": "POST",
             "path": "public-drive-doc",
-            "responseMode": "onReceived",
-            "options": {
-                "responseData": (
-                    "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"/>"
-                    "<title>Sent to n8n</title><body style=\"font:16px/1.45 system-ui;padding:2rem\">"
-                    "<p>Received. OpenRouter will create HQ Tasks with this Drive file ID in about 30 seconds.</p>"
-                    "<p><a href=\"https://app.notion.com/p/3cd0b26fcc4e819bb9ead19d74fb64a6\">"
-                    "Confirm the Drive folder</a></p></body></html>"
-                ),
-                "responseHeaders": {
-                    "entries": [
-                        {"name": "Content-Type", "value": "text/html; charset=utf-8"}
-                    ]
-                },
-            },
+            "responseMode": "responseNode",
+            "options": {},
         },
     },
     {
@@ -364,11 +351,36 @@ nodes = [
         "parameters": {"jsCode": PARSE_PUBLIC_CODE},
     },
     {
+        "id": "respond-public-doc",
+        "name": "Respond public Doc",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "position": [360, 1100],
+        "parameters": {
+            "respondWith": "text",
+            "responseBody": (
+                "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"/>"
+                "<title>Sent to n8n</title><body style=\"font:16px/1.45 system-ui;padding:2rem\">"
+                "<p>Received. OpenRouter will create HQ Tasks with this Drive file ID in about 30 seconds.</p>"
+                "<p><a href=\"https://app.notion.com/p/3cd0b26fcc4e819bb9ead19d74fb64a6\">"
+                "Confirm the Drive folder</a></p></body></html>"
+            ),
+            "options": {
+                "responseCode": 200,
+                "responseHeaders": {
+                    "entries": [
+                        {"name": "Content-Type", "value": "text/html; charset=utf-8"}
+                    ]
+                },
+            },
+        },
+    },
+    {
         "id": "has-doc-text",
         "name": "Has Doc text already",
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
-        "position": [440, 1100],
+        "position": [580, 1100],
         "parameters": {
             "conditions": {
                 "options": {
@@ -757,7 +769,8 @@ connections = {
     "Google userinfo": conn("Allow Drive caller"),
     "Allow Drive caller": conn("Normalize file"),
     "Public Drive Doc": conn("Parse Drive URL"),
-    "Parse Drive URL": conn("Has Doc text already"),
+    "Parse Drive URL": conn("Respond public Doc"),
+    "Respond public Doc": conn("Has Doc text already"),
     "Has Doc text already": {
         "main": [
             [{"node": "Normalize file", "type": "main", "index": 0}],

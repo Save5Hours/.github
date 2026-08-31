@@ -8,3 +8,4 @@ token.json
 node_modules/
 __pycache__/
 *.pyc
+.railway/

@@ -71,15 +71,18 @@ The Railway CLI is installed here (`railway 5.45.10`) but not logged in. From yo
    - `N8N_PROTOCOL` = `https`
 6. Redeploy. Open the public URL. Create the **owner account** (first visitor). Keep the URL private.
 
-### Option C — CLI (once you are logged in)
+### Option C — CLI or GitHub Actions (once you have a token)
 
 ```bash
 cd automations/meeting-notes-to-tasks
-railway login          # or: railway login --browserless
-# Set N8N_ENCRYPTION_KEY first. Attach volume /home/node/.n8n in the dashboard.
+export N8N_ENCRYPTION_KEY="$(openssl rand -hex 32)"   # save this
+railway login          # or: export RAILWAY_TOKEN=...
 ./scripts/deploy-railway.sh
-railway domain
 ```
+
+The script creates project `save5hours-n8n`, deploys this Dockerfile, mounts `/home/node/.n8n`, generates a domain, and sets `WEBHOOK_URL`. Optional: `RAILWAY_WORKSPACE`.
+
+Or add GitHub secrets `RAILWAY_TOKEN` + `N8N_ENCRYPTION_KEY` and run **Actions → Deploy n8n to Railway → Run workflow**.
 
 A project/account token can be exported as `RAILWAY_TOKEN` for CI. Do not commit it.
 

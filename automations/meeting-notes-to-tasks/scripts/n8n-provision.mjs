@@ -90,6 +90,22 @@ writeFileSync(runtimeWf, `${JSON.stringify(workflow, null, 2)}\n`);
 let db = openDb(false);
 let { userId, projectId } = ownerIds(db);
 
+function closeDb() {
+  try {
+    db?.close?.();
+  } catch {
+    // already closed
+  }
+  db = null;
+}
+
+function reopenDb() {
+  closeDb();
+  db = openDb(false);
+  ({ userId, projectId } = ownerIds(db));
+  return db;
+}
+
 function importWorkflow() {
   const args = ['n8n', 'import:workflow', '--input', runtimeWf];
   if (projectId) args.push('--projectId', projectId);
@@ -116,14 +132,13 @@ const hashed = createHash('sha256').update(JSON.stringify({
 const wfMarker = `${USER_FOLDER}/.save5hours-wf-${hashed}`;
 
 if (!existingWorkflow(db)) {
+  closeDb();
   if (importWorkflow()) {
     writeFileSync(wfMarker, '');
   } else {
     console.error('save5hours: workflow import deferred until next boot');
   }
-  db?.close?.();
-  db = openDb(false);
-  ({ userId, projectId } = ownerIds(db));
+  reopenDb();
 }
 
 const live = existingWorkflow(db);
@@ -211,21 +226,21 @@ if (creds.length) {
   }
   const credFile = `${OUT_DIR}/credentials.json`;
   writeFileSync(credFile, `${JSON.stringify(creds, null, 2)}\n`);
+  closeDb();
   const args = [
     'n8n',
     'import:credentials',
     '--input',
     credFile,
-    '--include',
-    'id,name,type,data',
   ];
   if (projectId) args.push('--projectId', projectId);
   else if (userId) args.push('--userId', userId);
   console.log(`save5hours: importing credentials (${creds.map((c) => c.name).join(', ')})`);
   if (!run(args)) {
     console.error('save5hours: credential import failed; paste them in the n8n Credentials UI');
-  } else if (db && projectId) {
-    db = openDb(false) || db;
+  }
+  reopenDb();
+  if (db && projectId) {
     for (const cred of creds) {
       try {
         db.prepare(
@@ -239,7 +254,7 @@ if (creds.length) {
   }
 }
 
-db?.close?.();
+closeDb();
 
 const canActivate = envPresent('OPENROUTER_API_KEY') && envPresent('NOTION_API_KEY')
   && process.env.N8N_ACTIVATE_WORKFLOW === 'true';

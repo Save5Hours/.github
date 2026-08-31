@@ -121,7 +121,7 @@ def hq_confirm_refs(token: str) -> dict[str, str]:
 
 def n8n_executions(api_key: str) -> list[dict]:
     req = urllib.request.Request(
-        f"{N8N_URL}/api/v1/executions?limit=20",
+        f"{N8N_URL}/api/v1/executions?limit=50&workflowId={MEETING_WF_ID}",
         headers={"X-N8N-API-KEY": api_key, "Accept": "application/json"},
     )
     with urllib.request.urlopen(req, timeout=30) as resp:
@@ -259,8 +259,12 @@ def main() -> int:
                 print(f"n8n executions HTTP {err.code}")
                 executions = []
             notes = [e for e in executions if e.get("workflowId") == MEETING_WF_ID]
-            print(f"n8n meeting-notes executions {len(notes)} (all {len(executions)})")
-            for item in notes[:8]:
+            ok = [e for e in notes if e.get("status") == "success"]
+            print(
+                f"n8n meeting-notes executions {len(notes)} "
+                f"success={len(ok)} (api {len(executions)})"
+            )
+            for item in notes[:12]:
                 print(
                     f"  id={item.get('id')} status={item.get('status')} "
                     f"mode={item.get('mode')} start={item.get('startedAt')}"

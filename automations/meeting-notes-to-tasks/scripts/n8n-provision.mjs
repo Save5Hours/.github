@@ -92,7 +92,8 @@ let { userId, projectId } = ownerIds(db);
 
 function importWorkflow() {
   const args = ['n8n', 'import:workflow', '--input', runtimeWf];
-  if (userId) args.push('--userId', userId);
+  if (projectId) args.push('--projectId', projectId);
+  else if (userId) args.push('--userId', userId);
   return run(args);
 }
 
@@ -218,7 +219,8 @@ if (creds.length) {
     '--include',
     'id,name,type,data',
   ];
-  if (userId) args.push('--userId', userId);
+  if (projectId) args.push('--projectId', projectId);
+  else if (userId) args.push('--userId', userId);
   console.log(`save5hours: importing credentials (${creds.map((c) => c.name).join(', ')})`);
   if (!run(args)) {
     console.error('save5hours: credential import failed; paste them in the n8n Credentials UI');

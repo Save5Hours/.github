@@ -70,6 +70,9 @@ console.log(
   `userFolder=${USER_FOLDER}`,
 );
 
+mkdirSync(OUT_DIR, { recursive: true });
+mkdirSync(USER_FOLDER, { recursive: true });
+
 if (process.env.N8N_CLEAR_LICENSE === 'true') {
   console.log('save5hours: clearing local n8n license cert on this volume');
   run(['n8n', 'license:clear']);

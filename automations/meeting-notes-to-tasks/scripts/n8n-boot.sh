@@ -20,6 +20,7 @@ if [ "$(id -u)" = "0" ]; then
   exec su -s /bin/sh node -c 'exec /opt/save5hours/n8n-boot.sh "$@"' -- "$@"
 fi
 
+export HOME="${HOME:-/home/node}"
 export N8N_USER_FOLDER="${N8N_USER_FOLDER:-/home/node/.n8n}"
 mkdir -p "$N8N_USER_FOLDER"
 

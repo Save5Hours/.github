@@ -12,6 +12,7 @@ import {
   mapAssignee,
   normalizeMeetingInput,
   noteTextIsReady,
+  parseDriveFileId,
   parseOpenRouterContent,
   skipDuplicateTasks,
 } from '../lib/transform.mjs';
@@ -45,6 +46,15 @@ test('Apps Script VERIFY_NOTES matches drive-verify fixture', () => {
   for (const line of notes.split('\n').filter(Boolean)) {
     assert.ok(src.includes(line), line);
   }
+});
+
+test('parseDriveFileId reads Google Doc URLs and rejects inline ids', () => {
+  assert.equal(
+    parseDriveFileId('https://docs.google.com/document/d/1DocVerifyFileIdNotInline99/edit'),
+    '1DocVerifyFileIdNotInline99',
+  );
+  assert.equal(parseDriveFileId('inline-15616df3'), '');
+  assert.equal(parseDriveFileId('1BareFileIdFromHqTask'), '1BareFileIdFromHqTask');
 });
 
 test('driveCallerAllowed is Save 5 Hours plus known organizer Gmail', () => {

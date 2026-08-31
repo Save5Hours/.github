@@ -38,6 +38,18 @@ export function driveCallerAllowed(email) {
   return value.endsWith('@save5hours.ch');
 }
 
+export function parseDriveFileId(text) {
+  const raw = String(text || '');
+  const doc = raw.match(/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]{10,})/i)
+    || raw.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]{10,})/i)
+    || raw.match(/FILE_ID\s+([a-zA-Z0-9_-]{10,})/i);
+  const candidate = doc ? doc[1] : raw.trim();
+  if (!candidate || candidate.toLowerCase().startsWith('inline-')) return '';
+  if (!/^[a-zA-Z0-9_-]{10,}$/.test(candidate)) return '';
+  if (candidate.toUpperCase() === 'REPLACE_ME_GEMINI_NOTES_FOLDER_ID') return '';
+  return candidate;
+}
+
 export function noteTextIsReady(text) {
   return String(text || '').replace(/\s+/g, ' ').trim().length >= MIN_NOTE_CHARS;
 }

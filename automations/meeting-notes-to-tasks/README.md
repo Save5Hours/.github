@@ -162,6 +162,7 @@ Used by curl dry-runs. The live Apps Script path is **`/webhook/meeting-notes-dr
 Production URLs after publish:
 
 - Apps Script (default): `https://YOUR-N8N-HOST/webhook/meeting-notes-drive`
+- Public Doc link: `https://YOUR-N8N-HOST/webhook/public-drive-doc` with `{ "url": "https://docs.google.com/document/d/FILE_ID/edit" }` (share as Anyone with the link)
 - Dry-run / Header Auth: `https://YOUR-N8N-HOST/webhook/meeting-notes`
 
 Body:

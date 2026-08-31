@@ -79,7 +79,17 @@ def setup_html(source: str) -> str:
 </head>
 <body>
   <h1>Connect Gemini Drive notes</h1>
-  <p>n8n already writes HQ Tasks from OpenRouter. This page only connects <strong>Google Drive</strong>. You do <strong>not</strong> need an n8n login. Sign in to Google as the Meet organizer (<code>@save5hours.ch</code> or the known organizer Gmail).</p>
+  <p>n8n already writes HQ Tasks from OpenRouter. You do <strong>not</strong> need an n8n login.</p>
+  <h2>Option 1 — public Doc link (fastest check)</h2>
+  <p>Share one Gemini Google Doc as <strong>Anyone with the link can view</strong>, paste the URL, send. n8n exports the text and writes HQ Tasks with that Drive file ID.</p>
+  <p>
+    <input id="docurl" type="url" placeholder="https://docs.google.com/document/d/…/edit" style="font:inherit;width:min(100%,28rem);padding:.3rem .5rem"/>
+    <button type="button" id="senddoc">Send to HQ Tasks</button>
+    <span class="ok" id="docok">sent</span>
+    <span class="warn" id="docerr"></span>
+  </p>
+  <h2>Option 2 — Apps Script (Meet Recordings tree + 1-minute trigger)</h2>
+  <p>Sign in to Google as the Meet organizer (<code>@save5hours.ch</code> or the known organizer Gmail).</p>
   <ol>
     <li>Open <a href="https://script.google.com" target="_blank" rel="noopener">script.google.com</a> → <strong>New project</strong>.</li>
     <li>Click <button type="button" id="copy">Copy Apps Script</button><span class="ok" id="ok">copied</span> and paste into the editor.</li>
@@ -93,6 +103,21 @@ def setup_html(source: str) -> str:
     document.getElementById('copy').onclick = async () => {{
       await navigator.clipboard.writeText(document.getElementById('src').value);
       document.getElementById('ok').style.display = 'inline';
+    }};
+    document.getElementById('senddoc').onclick = async () => {{
+      const err = document.getElementById('docerr');
+      const ok = document.getElementById('docok');
+      err.textContent = '';
+      ok.style.display = 'none';
+      const url = document.getElementById('docurl').value.trim();
+      if (!url) {{ err.textContent = 'paste a Google Doc URL'; return; }}
+      const res = await fetch('/webhook/public-drive-doc', {{
+        method: 'POST',
+        headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify({{ url }}),
+      }});
+      if (!res.ok) {{ err.textContent = 'HTTP ' + res.status; return; }}
+      ok.style.display = 'inline';
     }};
   </script>
 </body>
@@ -199,8 +224,8 @@ def main() -> int:
         if 'id="copy"' not in page or "script.google.com" not in page:
             print("blocked: drive-setup page missing Copy / Apps Script steps")
             return 1
-        if "meeting-notes-drive" not in page:
-            print("blocked: drive-setup page missing Drive webhook path")
+        if 'id="senddoc"' not in page or "public-drive-doc" not in page:
+            print("blocked: drive-setup page missing public Doc form")
             return 1
         if 'id="secret"' in page or "filledSource" in page:
             print("blocked: drive-setup page still asks for the n8n webhook secret")

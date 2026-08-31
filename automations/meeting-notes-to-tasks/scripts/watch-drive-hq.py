@@ -29,6 +29,7 @@ TASKS_DB = "3bc0b26fcc4e8057b7ade1cdf5a67e6e"
 DRIVE_CONFIRM_PAGE = "3cd0b26fcc4e819bb9ead19d74fb64a6"
 N8N_URL = "https://n8n-production-192e.up.railway.app"
 WEBHOOK_PATH = "/webhook/meeting-notes"
+MEETING_WF_ID = "9JlE8lA1TQdlxw0S"
 PROJECT = "48651271-91e5-4a40-8783-6971a438c2a3"
 SERVICE = "n8n"
 ENV = "production"
@@ -257,8 +258,9 @@ def main() -> int:
             except urllib.error.HTTPError as err:
                 print(f"n8n executions HTTP {err.code}")
                 executions = []
-            print(f"n8n executions {len(executions)}")
-            for item in executions[:8]:
+            notes = [e for e in executions if e.get("workflowId") == MEETING_WF_ID]
+            print(f"n8n meeting-notes executions {len(notes)} (all {len(executions)})")
+            for item in notes[:8]:
                 print(
                     f"  id={item.get('id')} status={item.get('status')} "
                     f"mode={item.get('mode')} start={item.get('startedAt')}"

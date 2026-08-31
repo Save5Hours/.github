@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Publish a GET webhook that returns the Apps Script source (no secrets).
+"""Publish GET webhooks for the Drive Apps Script (no secrets).
 
-Live URL: https://n8n-production-192e.up.railway.app/webhook/apps-script-source
+Live URLs:
+  https://n8n-production-192e.up.railway.app/webhook/drive-setup
+  https://n8n-production-192e.up.railway.app/webhook/apps-script-source
+
 Does not touch the Meeting notes → HQ Tasks workflow.
 """
 
 from __future__ import annotations
 
+import html
 import json
 import os
 import sys
@@ -55,34 +59,90 @@ def request(api_key: str, method: str, path: str, body=None):
         return err.code, parsed
 
 
+def setup_html(source: str) -> str:
+    escaped = html.escape(source)
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Connect Gemini Drive notes</title>
+  <style>
+    body {{ font: 16px/1.45 system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; color: #111; }}
+    ol {{ padding-left: 1.3rem; }}
+    a {{ color: #0b57d0; }}
+    button {{ font: inherit; padding: .4rem .8rem; cursor: pointer; }}
+    textarea {{ width: 100%; min-height: 22rem; font: 12px/1.4 ui-monospace, monospace; }}
+    .ok {{ color: #0b7; display: none; margin-left: .5rem; }}
+  </style>
+</head>
+<body>
+  <h1>Connect Gemini Drive notes</h1>
+  <p>n8n already writes HQ Tasks from OpenRouter. This page only connects <strong>Google Drive</strong>.</p>
+  <ol>
+    <li>Open <a href="https://n8n-production-192e.up.railway.app/" target="_blank" rel="noopener">n8n</a> as <code>deevlylabs@gmail.com</code> → Credentials → <strong>Meeting notes webhook secret</strong> → copy the header value.</li>
+    <li>Open <a href="https://script.google.com" target="_blank" rel="noopener">script.google.com</a> as the Meet organizer → <strong>New project</strong>.</li>
+    <li>Click <button type="button" id="copy">Copy Apps Script</button><span class="ok" id="ok">copied</span>, paste into the editor, set <code>WEBHOOK_SECRET_PASTE</code>.</li>
+    <li>Run <strong>verifyDrivePath</strong>. Authorize Drive/Docs if Google asks.</li>
+    <li>Paste <code>FOLDER_URL</code> / <code>FILE_ID</code> from the log into <a href="https://app.notion.com/p/3cd0b26fcc4e819bb9ead19d74fb64a6" target="_blank" rel="noopener">Confirm the Drive folder</a>.</li>
+  </ol>
+  <p>Do not paste the webhook secret on the HQ page. Do not re-POST the paella fixture.</p>
+  <textarea id="src" readonly>{escaped}</textarea>
+  <p><a href="/webhook/apps-script-source">plain-text source</a></p>
+  <script>
+    document.getElementById('copy').onclick = async () => {{
+      const text = document.getElementById('src').value;
+      await navigator.clipboard.writeText(text);
+      document.getElementById('ok').style.display = 'inline';
+    }};
+  </script>
+</body>
+</html>
+"""
+
+
+def webhook_node(node_id: str, name: str, path: str, body: str, content_type: str, x: int) -> dict:
+    return {
+        "id": node_id,
+        "name": name,
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [x, 0],
+        "webhookId": path,
+        "parameters": {
+            "httpMethod": "GET",
+            "path": path,
+            "responseMode": "onReceived",
+            "options": {
+                "responseData": body,
+                "responseHeaders": {
+                    "entries": [{"name": "Content-Type", "value": content_type}]
+                },
+            },
+        },
+    }
+
+
 def workflow_payload(source: str) -> dict:
     return {
         "name": WF_NAME,
         "nodes": [
-            {
-                "id": "apps-script-source",
-                "name": "Apps Script source",
-                "type": "n8n-nodes-base.webhook",
-                "typeVersion": 2,
-                "position": [0, 0],
-                "webhookId": "apps-script-source",
-                "parameters": {
-                    "httpMethod": "GET",
-                    "path": "apps-script-source",
-                    "responseMode": "onReceived",
-                    "options": {
-                        "responseData": source,
-                        "responseHeaders": {
-                            "entries": [
-                                {
-                                    "name": "Content-Type",
-                                    "value": "text/plain; charset=utf-8",
-                                },
-                            ]
-                        },
-                    },
-                },
-            }
+            webhook_node(
+                "apps-script-source",
+                "Apps Script source",
+                "apps-script-source",
+                source,
+                "text/plain; charset=utf-8",
+                0,
+            ),
+            webhook_node(
+                "drive-setup",
+                "Drive setup page",
+                "drive-setup",
+                setup_html(source),
+                "text/html; charset=utf-8",
+                280,
+            ),
         ],
         "connections": {},
         "settings": {"executionOrder": "v1"},
@@ -123,11 +183,18 @@ def main() -> int:
     req = urllib.request.Request(f"{N8N_URL}/webhook/apps-script-source", method="GET")
     with urllib.request.urlopen(req, timeout=30) as resp:
         text = resp.read().decode("utf-8", errors="replace")
-        print(f"GET webhook HTTP {resp.status} bytes={len(text)}")
+        print(f"GET source HTTP {resp.status} bytes={len(text)}")
         if "function verifyDrivePath(" not in text:
             print("blocked: webhook body is not the Apps Script")
             return 1
-    print("apps-script-source webhook is live")
+    req = urllib.request.Request(f"{N8N_URL}/webhook/drive-setup", method="GET")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        page = resp.read().decode("utf-8", errors="replace")
+        print(f"GET setup HTTP {resp.status} bytes={len(page)}")
+        if "verifyDrivePath" not in page or "<!doctype html>" not in page.lower():
+            print("blocked: drive-setup page missing HTML")
+            return 1
+    print("apps-script-source and drive-setup webhooks are live")
     return 0
 
 

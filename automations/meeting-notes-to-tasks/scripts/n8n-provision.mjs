@@ -33,7 +33,11 @@ function run(args) {
   console.log('save5hours:', shown.join(' '));
   const result = spawnSync(args[0], args.slice(1), {
     encoding: 'utf8',
-    env: process.env,
+    env: {
+      ...process.env,
+      HOME: '/home/node',
+      N8N_USER_FOLDER: USER_FOLDER,
+    },
   });
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
@@ -59,8 +63,12 @@ function ownerIds(db) {
   }
 }
 
-mkdirSync(OUT_DIR, { recursive: true });
-mkdirSync(USER_FOLDER, { recursive: true });
+console.log(
+  'save5hours: provision',
+  `uid=${process.getuid?.() ?? 'unknown'}`,
+  `home=${process.env.HOME || ''}`,
+  `userFolder=${USER_FOLDER}`,
+);
 
 if (process.env.N8N_CLEAR_LICENSE === 'true') {
   console.log('save5hours: clearing local n8n license cert on this volume');

@@ -4,9 +4,13 @@
 set -e
 
 # Railway volumes are often root-owned on first attach. n8n must run as node.
+# Never let n8n CLI touch /root/.n8n (that is a different SQLite than the volume).
 if [ "$(id -u)" = "0" ]; then
+  rm -rf /root/.n8n
   mkdir -p /home/node/.n8n
   chown -R node:node /home/node/.n8n
+  export HOME=/home/node
+  export N8N_USER_FOLDER=/home/node/.n8n
   if command -v gosu >/dev/null 2>&1; then
     exec gosu node "$0" "$@"
   fi

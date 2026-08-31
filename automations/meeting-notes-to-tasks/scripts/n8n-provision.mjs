@@ -165,18 +165,25 @@ if (process.env.N8N_CLEAR_LICENSE === 'true') {
 }
 
 const folder = envValue('GEMINI_NOTES_FOLDER_ID');
+const googleReady = envPresent('GOOGLE_OAUTH_CLIENT_ID') && envPresent('GOOGLE_OAUTH_CLIENT_SECRET');
 const workflow = JSON.parse(readFileSync(SRC, 'utf8'));
 workflow.id = WF_ID;
 workflow.name = WF_NAME;
 workflow.active = false;
 for (const node of workflow.nodes) {
   if (node.type !== 'n8n-nodes-base.googleDriveTrigger') continue;
-  if (folder && folder !== PLACEHOLDER) {
+  // Enabling Drive Trigger without a signed-in OAuth client can block
+  // workflow activation (and the webhook). Keep them off unless both the
+  // folder and Google OAuth client env vars are present.
+  if (folder && folder !== PLACEHOLDER && googleReady) {
     if (node.parameters?.folderToWatch) {
       node.parameters.folderToWatch.value = folder;
     }
     node.disabled = false;
   } else {
+    if (folder && folder !== PLACEHOLDER && node.parameters?.folderToWatch) {
+      node.parameters.folderToWatch.value = folder;
+    }
     node.disabled = true;
   }
 }
@@ -253,9 +260,9 @@ if (live && db) {
     );
     writeFileSync(wfMarker, '');
     console.log(
-      folder && folder !== PLACEHOLDER
+      folder && folder !== PLACEHOLDER && googleReady
         ? 'save5hours: patched workflow Drive folder from GEMINI_NOTES_FOLDER_ID'
-        : 'save5hours: Drive triggers disabled until GEMINI_NOTES_FOLDER_ID is set',
+        : 'save5hours: Drive triggers disabled until folder ID + Google OAuth client exist',
     );
   } catch (error) {
     console.error('save5hours: workflow patch failed', error.message);

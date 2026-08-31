@@ -2,8 +2,8 @@
 """Publish Meeting notes → HQ Tasks via the n8n public API.
 
 Reads /workspace/.env (never printed). Drive triggers stay disabled until a
-folder ID exists. Exit 0 on activate, 2 if the API key cannot see workflows
-and create failed, 1 on error.
+folder ID *and* a real Google Drive OAuth credential exist (Sign in). Exit 0
+on activate, 2 if the API key cannot see workflows and create failed, 1 on error.
 """
 
 from __future__ import annotations
@@ -21,6 +21,10 @@ WF_SRC = ROOT / "n8n" / "meeting-notes-to-tasks.json"
 ENV_CANDIDATES = [Path("/workspace/.env"), ROOT / ".env"]
 PROJECT = "48651271-91e5-4a40-8783-6971a438c2a3"
 WF_NAME = "Meeting notes → HQ Tasks"
+DRIVE_CONFIRM_PAGE = "3cd0b26fcc4e819bb9ead19d74fb64a6"
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from drive_ids import parse_drive_refs  # noqa: E402
 
 
 def load_dotenv() -> dict[str, str]:
@@ -111,6 +115,63 @@ class N8n:
             return err.code, parsed
 
 
+def notion_plain(prop: dict | None) -> str:
+    if not prop:
+        return ""
+    ptype = prop.get("type")
+    if ptype == "title":
+        return "".join(span.get("plain_text") or "" for span in prop.get("title") or [])
+    if ptype == "rich_text":
+        return "".join(span.get("plain_text") or "" for span in prop.get("rich_text") or [])
+    if ptype == "url":
+        return str(prop.get("url") or "")
+    return ""
+
+
+def hq_drive_refs(token: str) -> dict[str, str]:
+    if not token:
+        return {"folder_id": "", "file_id": ""}
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Notion-Version": "2022-06-28",
+        "Content-Type": "application/json",
+    }
+    blobs: list[str] = []
+    try:
+        req = urllib.request.Request(
+            f"https://api.notion.com/v1/pages/{DRIVE_CONFIRM_PAGE}",
+            headers=headers,
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            page = json.loads(resp.read().decode("utf-8"))
+        props = page.get("properties") or {}
+        blobs.append(notion_plain(props.get("Drive URL")))
+        blobs.append(notion_plain(props.get("Drive file ID")))
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
+        return {"folder_id": "", "file_id": ""}
+    try:
+        req = urllib.request.Request(
+            f"https://api.notion.com/v1/comments?block_id={DRIVE_CONFIRM_PAGE}",
+            headers=headers,
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            comments = json.loads(resp.read().decode("utf-8"))
+        for row in comments.get("results") or []:
+            rich = row.get("rich_text") or []
+            blobs.append("".join(span.get("plain_text") or "" for span in rich))
+    except urllib.error.HTTPError:
+        pass
+    return parse_drive_refs(*blobs)
+
+
+def google_oauth_ready(mapping: dict[str, dict]) -> bool:
+    spec = mapping.get("GOOGLE_DRIVE") or {}
+    cred_id = str(spec.get("id") or "")
+    return bool(cred_id) and cred_id not in {"GOOGLE_DRIVE", "REPLACE_ME"}
+
+
 def apply_drive_folder(nodes: list, folder_id: str) -> list:
     out = []
     for node in nodes:
@@ -167,6 +228,11 @@ def main() -> int:
     openrouter = env.get("OPENROUTER_API_KEY") or rail.get("OPENROUTER_API_KEY") or ""
     webhook = rail.get("N8N_WEBHOOK_SECRET") or env.get("N8N_WEBHOOK_SECRET") or ""
     folder = (env.get("GEMINI_NOTES_FOLDER_ID") or rail.get("GEMINI_NOTES_FOLDER_ID") or "").strip()
+    hq_refs = hq_drive_refs(notion)
+    if not folder:
+        folder = hq_refs.get("folder_id") or ""
+        if folder:
+            print("using Drive folder ID from HQ confirmation task")
     google_id = (env.get("GOOGLE_OAUTH_CLIENT_ID") or rail.get("GOOGLE_OAUTH_CLIENT_ID") or "").strip()
     google_secret = (
         env.get("GOOGLE_OAUTH_CLIENT_SECRET") or rail.get("GOOGLE_OAUTH_CLIENT_SECRET") or ""
@@ -291,7 +357,10 @@ def main() -> int:
     print(f"  GOOGLE_OAUTH_CLIENT_ID: {'yes' if google_id else 'NO'}")
 
     src = json.loads(WF_SRC.read_text(encoding="utf-8"))
-    nodes = apply_drive_folder(src["nodes"], folder)
+    drive_ready = google_oauth_ready(mapping) and bool(folder)
+    if folder and not google_oauth_ready(mapping):
+        print("folder ID present; Drive triggers stay disabled until Google OAuth Sign in")
+    nodes = apply_drive_folder(src["nodes"], folder if drive_ready else "")
     nodes = retarget_creds(nodes, mapping)
     payload = {
         "name": WF_NAME,

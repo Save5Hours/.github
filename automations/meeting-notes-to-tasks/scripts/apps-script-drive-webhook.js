@@ -10,15 +10,13 @@
  * lastUpdated and skips notes shorter than 80 characters.
  *
  * Setup (Workspace admin / Meet organizer):
- * 1. https://script.google.com → New project
- * 2. Paste this file
- * 3. Project Settings → Script properties:
- *      WEBHOOK_URL     https://n8n-production-192e.up.railway.app/webhook/meeting-notes
- *      WEBHOOK_SECRET  same value as n8n Header Auth "Meeting notes webhook secret"
- *      FOLDER_ID       optional; Drive folder id
- *      FOLDER_NAME     optional; default "Meet Recordings" if FOLDER_ID is empty
- * 4. Run **verifyDrivePath** once (creates a real Google Doc, POSTs it, and
- *    installs the 1-minute trigger). Optional: **listCandidateFolders**.
+ * 1. https://script.google.com → New project → paste this file
+ * 2. Put the n8n Header Auth value in WEBHOOK_SECRET_PASTE below
+ *    (n8n → Credentials → Meeting notes webhook secret; account deevlylabs@gmail.com).
+ *    Script properties WEBHOOK_SECRET still work if you prefer not to paste in code.
+ * 3. Run **verifyDrivePath** once (creates a real Google Doc, POSTs {fileId,text},
+ *    installs the 1-minute trigger). Log: FOLDER_URL / FILE_ID → HQ Drive task.
+ * Optional Script properties: FOLDER_ID, FOLDER_NAME, WEBHOOK_URL.
  *
  * Keep VERIFY_NOTES in sync with fixtures/drive-verify-notes.txt.
  * The n8n workflow must be Active. Header name is X-Webhook-Secret.
@@ -27,6 +25,8 @@ var MIN_NOTE_CHARS = 80;
 var DEFAULT_WEBHOOK =
   "https://n8n-production-192e.up.railway.app/webhook/meeting-notes";
 var DEFAULT_FOLDER_NAME = "Meet Recordings";
+// Paste the n8n "Meeting notes webhook secret" value here (not in Notion/git).
+var WEBHOOK_SECRET_PASTE = "";
 var VERIFY_FOLDER_NAME = "Gemini meeting notes (n8n)";
 var VERIFY_DOC_NAME = "Gemini notes — Drive path verification (n8n)";
 var VERIFY_NOTES =
@@ -65,7 +65,7 @@ function listCandidateFolders() {
 function verifyDrivePath() {
   const props = PropertiesService.getScriptProperties();
   const webhookUrl = props.getProperty("WEBHOOK_URL") || DEFAULT_WEBHOOK;
-  const secret = required_(props, "WEBHOOK_SECRET");
+  const secret = webhookSecret_(props);
   const folder = ensureFolder_(props);
 
   const doc = DocumentApp.create(VERIFY_DOC_NAME);
@@ -95,7 +95,7 @@ function verifyDrivePath() {
 function checkNewMeetingNotes() {
   const props = PropertiesService.getScriptProperties();
   const webhookUrl = props.getProperty("WEBHOOK_URL") || DEFAULT_WEBHOOK;
-  const secret = required_(props, "WEBHOOK_SECRET");
+  const secret = webhookSecret_(props);
   const folder = resolveFolder_(props);
 
   const lastIso =
@@ -188,6 +188,12 @@ function fingerprint_(text) {
       return ("0" + v.toString(16)).slice(-2);
     })
     .join("");
+}
+
+function webhookSecret_(props) {
+  const pasted = String(WEBHOOK_SECRET_PASTE || "").trim();
+  if (pasted) return pasted;
+  return required_(props, "WEBHOOK_SECRET");
 }
 
 function required_(props, key) {

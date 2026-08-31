@@ -19,7 +19,7 @@ Example: notes say Roman makes paella, Antoine brings beers, Martin brings chees
 **Live n8n (1.123.75):** [https://n8n-production-192e.up.railway.app/](https://n8n-production-192e.up.railway.app/) — Railway project `save5hours-n8n`. Workflow **Meeting notes → HQ Tasks** is Active. OpenRouter + Notion already wrote HQ Tasks from a webhook dry-run (`Drive file ID` = `inline-*`). Remaining: connect Drive. **Do not use `clasp login`** (Google returns `400 invalid_request` for that OAuth client). Either:
 
 - n8n native Google Drive OAuth2 (GCP Web client + Sign in; redirect `https://n8n-production-192e.up.railway.app/rest/oauth2-credential/callback`) plus a **flat** folder ID, or
-- paste `scripts/apps-script-drive-webhook.js` in [script.google.com](https://script.google.com) and run **`verifyDrivePath`** (walks Meet Recordings subfolders; no GCP client).
+- paste `scripts/apps-script-drive-webhook.js` in [script.google.com](https://script.google.com), set `WEBHOOK_SECRET_PASTE` to the n8n Header Auth value, and run **`verifyDrivePath`** (walks Meet Recordings subfolders; no GCP client).
 
 Do not re-POST the paella fixture.
 
@@ -217,7 +217,7 @@ See `config/assignee-map.json`. If you change people, edit that file **and** the
 n8n’s Drive Trigger only sees **direct children** of the watched folder. If Gemini writes `Meet Recordings / <meeting> / notes`, either:
 
 - Create a shared folder `Gemini meeting notes` and save/shortcut docs there, or
-- Deploy `scripts/apps-script-drive-webhook.js` bound to the Workspace account. Set `WEBHOOK_SECRET` (and optional `FOLDER_ID`). Run **`verifyDrivePath` once** — it creates a real Google Doc, POSTs `{ fileId, text }` to n8n, and installs the 1-minute trigger. Keep the n8n **Webhook** node published.
+- Deploy `scripts/apps-script-drive-webhook.js` bound to the Workspace account. Paste the n8n Header Auth value into `WEBHOOK_SECRET_PASTE` (or Script property `WEBHOOK_SECRET`). Run **`verifyDrivePath` once** — it creates a real Google Doc, POSTs `{ fileId, text }` to n8n, and installs the 1-minute trigger. Keep the n8n **Webhook** node published.
 
 ## Rollback
 

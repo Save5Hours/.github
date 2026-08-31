@@ -16,22 +16,24 @@ Google Meet ends
 
 Example: notes say Roman makes paella, Antoine brings beers, Martin brings cheese → three tasks on the **By person** board.
 
+**Live n8n (1.123.75):** [https://n8n-production-192e.up.railway.app/](https://n8n-production-192e.up.railway.app/) — Railway project `save5hours-n8n`. OpenRouter is already on this instance. Remaining: a Notion **internal** integration token (`NOTION_API_KEY` or n8n credential `Notion (Save 5 Hours HQ)`), then a Gemini Drive folder ID or the Apps Script webhook. After those land, `./scripts/n8n-check-and-dry-run.py` activates the workflow and POSTs the paella fixture to `/webhook/meeting-notes`.
+
 ## What you paste where
 
 Secrets never go in this Git repo. There are two places:
 
 | Place | What belongs there |
 | --- | --- |
-| **Railway → n8n service → Variables** | Hosting only: `N8N_ENCRYPTION_KEY`, `N8N_HOST`, `WEBHOOK_URL`, timezone |
-| **n8n editor → Credentials** (after the instance is up) | Google Drive OAuth, Notion token, OpenRouter key, webhook header |
+| **Railway → n8n service → Variables** | Hosting: `N8N_ENCRYPTION_KEY`, `N8N_HOST`, `WEBHOOK_URL`, timezone. Optional API keys: `OPENROUTER_API_KEY`, `NOTION_API_KEY`, `N8N_WEBHOOK_SECRET`, `GEMINI_NOTES_FOLDER_ID` (boot provision writes n8n credentials). |
+| **n8n editor → Credentials** | Same keys if you prefer the UI. Google Drive OAuth still needs **Sign in** here. |
 
-OpenRouter, Notion, and Google keys are entered in the **n8n UI**, not as Railway env vars.
+Do not commit secrets. Do not set `N8N_LICENSE_ACTIVATION_KEY`.
 
 ---
 
 ## 1. Railway (host n8n)
 
-This agent **cannot** log into Railway (`railway whoami` → Unauthorized). Use **n8n 1.123.x**, not `latest` / 2.x: this workflow’s Code nodes need the 1.x image (2.x wants a separate task-runner service).
+Use **n8n 1.123.x**, not `latest` / 2.x: this workflow’s Code nodes need the 1.x image (2.x wants a separate task-runner service). The live Railway project is already on `n8nio/n8n:1.123.75`.
 
 ### Option A — Docker image `n8nio/n8n:1.123.75` (recommended)
 

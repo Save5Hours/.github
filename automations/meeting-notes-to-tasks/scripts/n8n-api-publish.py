@@ -111,11 +111,20 @@ class N8n:
             return err.code, parsed
 
 
-def disable_drive_nodes(nodes: list) -> list:
+def apply_drive_folder(nodes: list, folder_id: str) -> list:
     out = []
     for node in nodes:
-        item = dict(node)
-        if item.get("type") == "n8n-nodes-base.googleDriveTrigger":
+        item = json.loads(json.dumps(node))
+        if item.get("type") != "n8n-nodes-base.googleDriveTrigger":
+            out.append(item)
+            continue
+        if folder_id:
+            item["disabled"] = False
+            params = item.setdefault("parameters", {})
+            watch = dict(params.get("folderToWatch") or {})
+            watch.update({"__rl": True, "mode": "id", "value": folder_id})
+            params["folderToWatch"] = watch
+        else:
             item["disabled"] = True
         out.append(item)
     return out
@@ -157,6 +166,7 @@ def main() -> int:
     notion = env.get("NOTION_API_KEY") or rail.get("NOTION_API_KEY") or ""
     openrouter = env.get("OPENROUTER_API_KEY") or rail.get("OPENROUTER_API_KEY") or ""
     webhook = rail.get("N8N_WEBHOOK_SECRET") or env.get("N8N_WEBHOOK_SECRET") or ""
+    folder = (env.get("GEMINI_NOTES_FOLDER_ID") or rail.get("GEMINI_NOTES_FOLDER_ID") or "").strip()
     secrets = [api_key, notion, openrouter, webhook]
 
     print("n8n API publish (secrets redacted)")
@@ -165,6 +175,7 @@ def main() -> int:
     print(f"  NOTION_API_KEY: {'yes' if notion else 'NO'}")
     print(f"  OPENROUTER_API_KEY: {'yes' if openrouter else 'NO'}")
     print(f"  webhook secret: {'yes' if webhook else 'NO'}")
+    print(f"  GEMINI_NOTES_FOLDER_ID: {'yes' if folder else 'NO (Drive triggers disabled)'}")
     if not api_key:
         print("blocked: N8N_API_KEY missing from .env")
         return 1
@@ -249,7 +260,7 @@ def main() -> int:
         }
 
     src = json.loads(WF_SRC.read_text(encoding="utf-8"))
-    nodes = disable_drive_nodes(src["nodes"])
+    nodes = apply_drive_folder(src["nodes"], folder)
     nodes = retarget_creds(nodes, mapping)
     payload = {
         "name": WF_NAME,

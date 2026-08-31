@@ -80,7 +80,7 @@ railway login          # or: export RAILWAY_TOKEN=...
 ./scripts/deploy-railway.sh
 ```
 
-The script creates project `save5hours-n8n`, deploys this Dockerfile, mounts `/home/node/.n8n`, generates a domain, and sets `WEBHOOK_URL`. Optional: `RAILWAY_WORKSPACE`.
+The script creates project `save5hours-n8n`, attaches the volume and sets `N8N_ENCRYPTION_KEY` **before** the first n8n process, then deploys this Dockerfile, generates a domain, and sets `WEBHOOK_URL`. The image imports `n8n/meeting-notes-to-tasks.json` on first boot (workflow stays inactive until you add credentials and activate it). Optional: `RAILWAY_WORKSPACE`.
 
 Or add GitHub secrets `RAILWAY_TOKEN` + `N8N_ENCRYPTION_KEY` and run **Actions → Deploy n8n to Railway → Run workflow**.
 

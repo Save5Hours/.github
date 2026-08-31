@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Create (if needed) and deploy n8n 1.123.75 on Railway from this folder.
 # Requires: railway login OR RAILWAY_TOKEN, and N8N_ENCRYPTION_KEY.
+#
+# Order matters: volume + N8N_ENCRYPTION_KEY + WEBHOOK_URL must exist
+# before the first n8n process starts. Rotating the encryption key later
+# makes stored credentials unreadable.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -9,6 +13,8 @@ export PATH="${HOME}/.npm-global/bin:${PATH}"
 PROJECT_NAME="${RAILWAY_PROJECT_NAME:-save5hours-n8n}"
 SERVICE_NAME="${RAILWAY_SERVICE_NAME:-n8n}"
 export PROJECT_NAME SERVICE_NAME
+export RAILWAY_CALLER="${RAILWAY_CALLER:-skill:use-railway@1.3.7}"
+export RAILWAY_AGENT_SESSION="${RAILWAY_AGENT_SESSION:-railway-skill-meeting-notes-3e35}"
 
 if ! command -v railway >/dev/null 2>&1; then
   echo "Install the Railway CLI: npm i -g @railway/cli" >&2
@@ -45,6 +51,28 @@ def run(args, check=True):
         raise SystemExit(r.returncode)
     return r
 
+def parse_domain(raw):
+    if not raw or not raw.strip():
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        host = raw.strip().split()[0]
+        return host or None
+    domain = None
+    if isinstance(payload, dict):
+        domain = payload.get("domain") or payload.get("host")
+        domains = payload.get("domains")
+        if not domain and isinstance(domains, list) and domains:
+            d0 = domains[0]
+            domain = d0.get("domain") if isinstance(d0, dict) else d0
+    elif isinstance(payload, list) and payload:
+        d0 = payload[0]
+        domain = d0.get("domain") if isinstance(d0, dict) else d0
+    if isinstance(domain, str) and domain.strip():
+        return domain.strip()
+    return None
+
 who = run(["railway", "whoami"])
 print("authenticated:", who.stdout.strip() or "(ok)")
 
@@ -61,15 +89,13 @@ if not linked:
     run(init)
     run(["railway", "add", "--service", service, "--json"], check=False)
 
-run(["railway", "up", "-y", "--ci", "--service", service])
-
 vol = run(
     [
         "railway",
         "volume",
         "add",
         "--service",
-        os.environ["SERVICE_NAME"],
+        service,
         "--mount-path",
         "/home/node/.n8n",
         "--json",
@@ -79,55 +105,61 @@ vol = run(
 if vol.returncode != 0:
     print("volume add skipped (likely already attached):", vol.stderr.strip())
 
-run(["railway", "variable", "set",
-     f"N8N_ENCRYPTION_KEY={os.environ['N8N_ENCRYPTION_KEY']}",
-     "N8N_PORT=${{PORT}}",
-     "N8N_PROTOCOL=https",
-     "GENERIC_TIMEZONE=Europe/Zurich",
-     "N8N_DEFAULT_BINARY_DATA_MODE=filesystem",
-     "N8N_PROXY_HOPS=1",
-     "EXECUTIONS_DATA_PRUNE=true",
-     "EXECUTIONS_DATA_MAX_AGE=168",
-     "N8N_SECURE_COOKIE=true",
-     "--service", os.environ["SERVICE_NAME"],
-     "--skip-deploys"])
-
 listed = run(
-    ["railway", "domain", "list", "--service", os.environ["SERVICE_NAME"], "--json"],
+    ["railway", "domain", "list", "--service", service, "--json"],
     check=False,
 )
-domain = None
-if listed.returncode == 0 and listed.stdout.strip():
-    try:
-        payload = json.loads(listed.stdout)
-        if isinstance(payload, dict):
-            domain = payload.get("domain") or payload.get("host")
-            if not domain and isinstance(payload.get("domains"), list) and payload["domains"]:
-                d0 = payload["domains"][0]
-                domain = d0.get("domain") if isinstance(d0, dict) else d0
-        elif isinstance(payload, list) and payload:
-            d0 = payload[0]
-            domain = d0.get("domain") if isinstance(d0, dict) else d0
-    except json.JSONDecodeError:
-        pass
+domain = parse_domain(listed.stdout if listed.returncode == 0 else "")
 if not domain:
-    created = run(["railway", "domain", "--service", os.environ["SERVICE_NAME"], "--json"])
-    try:
-        payload = json.loads(created.stdout)
-        domain = (payload.get("domain") if isinstance(payload, dict) else None) or payload
-    except json.JSONDecodeError:
-        domain = created.stdout.strip()
+    created = run(["railway", "domain", "--service", service, "--json"], check=False)
+    domain = parse_domain(created.stdout)
+    if not domain and created.returncode != 0:
+        print("domain create deferred until after first deploy:", created.stderr.strip())
 
-if not domain or not isinstance(domain, str):
-    print("Could not parse the public domain. Set WEBHOOK_URL in the Railway dashboard.", file=sys.stderr)
-    raise SystemExit(1)
+host = None
+webhook = None
+if domain:
+    host = domain.replace("https://", "").replace("http://", "").split("/")[0]
+    webhook = f"https://{host}/"
 
-host = domain.replace("https://", "").replace("http://", "").split("/")[0]
-webhook = f"https://{host}/"
-run(["railway", "variable", "set",
-     f"N8N_HOST={host}",
-     f"WEBHOOK_URL={webhook}",
-     "--service", os.environ["SERVICE_NAME"]])
+vars_cmd = [
+    "railway", "variable", "set",
+    f"N8N_ENCRYPTION_KEY={os.environ['N8N_ENCRYPTION_KEY']}",
+    "N8N_PORT=${{PORT}}",
+    "N8N_PROTOCOL=https",
+    "GENERIC_TIMEZONE=Europe/Zurich",
+    "N8N_DEFAULT_BINARY_DATA_MODE=filesystem",
+    "N8N_PROXY_HOPS=1",
+    "EXECUTIONS_DATA_PRUNE=true",
+    "EXECUTIONS_DATA_MAX_AGE=168",
+    "N8N_SECURE_COOKIE=true",
+]
+if host:
+    vars_cmd.append(f"N8N_HOST={host}")
+if webhook:
+    vars_cmd.append(f"WEBHOOK_URL={webhook}")
+vars_cmd.extend(["--service", service, "--skip-deploys"])
+run(vars_cmd)
+
+run([
+    "railway", "up", "-y", "--ci", "--service", service,
+    "-m", "n8n 1.123.75 meeting notes to HQ Tasks",
+])
+
+if not domain:
+    created = run(["railway", "domain", "--service", service, "--json"])
+    domain = parse_domain(created.stdout)
+    if not domain:
+        print("Could not parse the public domain. Set WEBHOOK_URL in the Railway dashboard.", file=sys.stderr)
+        raise SystemExit(1)
+    host = domain.replace("https://", "").replace("http://", "").split("/")[0]
+    webhook = f"https://{host}/"
+    run(["railway", "variable", "set",
+         f"N8N_HOST={host}",
+         f"WEBHOOK_URL={webhook}",
+         "--service", service])
+
 print(f"n8n URL: {webhook}")
-print("Next: open that URL, create the owner account, import n8n/meeting-notes-to-tasks.json")
+print("Next: open that URL, create the owner account, add Google/Notion/OpenRouter credentials in the n8n UI.")
+print("The meeting-notes workflow is imported on first boot (inactive until you activate it).")
 PY

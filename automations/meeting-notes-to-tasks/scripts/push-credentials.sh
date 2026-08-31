@@ -37,6 +37,8 @@ prompt_plain() {
   printf "%s" "$value"
 }
 
+echo "OpenRouter is already on Railway n8n. This script still accepts a new key if you paste one."
+echo "The remaining required secret is NOTION_API_KEY (internal integration, HQ Tasks connected)."
 echo "Values go to Railway service ${SERVICE} (n8n Credentials UI is also fine)."
 echo "Leave a line empty to skip that variable."
 echo

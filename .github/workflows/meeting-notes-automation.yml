@@ -32,6 +32,7 @@ jobs:
           python3 -m py_compile scripts/n8n-api-publish.py
           python3 -m py_compile scripts/watch-drive-hq.py
           python3 -m py_compile scripts/drive_ids.py
+          python3 -m py_compile scripts/n8n-publish-apps-script-source.py
           python3 -m py_compile scripts/clasp-drive-verify.py
           node --check scripts/n8n-provision.mjs
           git diff --exit-code n8n/meeting-notes-to-tasks.json

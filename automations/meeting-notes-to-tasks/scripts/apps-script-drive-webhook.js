@@ -17,7 +17,8 @@
  *      WEBHOOK_SECRET  same value as n8n Header Auth "Meeting notes webhook secret"
  *      FOLDER_ID       optional; Drive folder id
  *      FOLDER_NAME     optional; default "Meet Recordings" if FOLDER_ID is empty
- * 4. Triggers → Add trigger → checkNewMeetingNotes → Time-driven → Every minute
+ * 4. Run **installMinuteTrigger** once (creates the 1-minute trigger).
+ * 5. Optional: run **listCandidateFolders** and paste a folder URL on the HQ Drive task.
  *
  * The n8n workflow must be Active. Header name is X-Webhook-Secret.
  */
@@ -25,6 +26,25 @@ var MIN_NOTE_CHARS = 80;
 var DEFAULT_WEBHOOK =
   "https://n8n-production-192e.up.railway.app/webhook/meeting-notes";
 var DEFAULT_FOLDER_NAME = "Meet Recordings";
+
+function installMinuteTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    if (trigger.getHandlerFunction() === "checkNewMeetingNotes") {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+  ScriptApp.newTrigger("checkNewMeetingNotes").timeBased().everyMinutes(1).create();
+}
+
+function listCandidateFolders() {
+  ["Meet Recordings", "Gemini meeting notes", "Gemini notes"].forEach(function (name) {
+    const it = DriveApp.getFoldersByName(name);
+    while (it.hasNext()) {
+      const folder = it.next();
+      Logger.log(name + " " + folder.getId() + " " + folder.getUrl());
+    }
+  });
+}
 
 function checkNewMeetingNotes() {
   const props = PropertiesService.getScriptProperties();

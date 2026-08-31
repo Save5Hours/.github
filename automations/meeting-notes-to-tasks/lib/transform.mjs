@@ -25,6 +25,44 @@ export function noteTextIsReady(text) {
   return String(text || '').replace(/\s+/g, ' ').trim().length >= MIN_NOTE_CHARS;
 }
 
+function inlineFileId(text) {
+  let hash = 0;
+  const raw = String(text || '');
+  for (let i = 0; i < raw.length; i += 1) {
+    hash = (Math.imul(31, hash) + raw.charCodeAt(i)) | 0;
+  }
+  return `inline-${(hash >>> 0).toString(16)}`;
+}
+
+export function normalizeMeetingInput(item) {
+  const src = item && typeof item === 'object' ? item : {};
+  const body = src.body && typeof src.body === 'object' ? src.body : {};
+  const inlineText = String(
+    src.text || src.notes || src.inlineText || body.text || body.notes || '',
+  ).trim();
+  const fileId = String(src.id || src.fileId || body.id || body.fileId || '').trim()
+    || (inlineText ? inlineFileId(inlineText) : '');
+  if (!fileId) {
+    throw new Error(
+      'Missing Google Drive fileId or notes text. Drive Trigger should send file.id; webhook body must be { "fileId": "..." } or { "text": "..." }.',
+    );
+  }
+  const mimeType = src.mimeType || body.mimeType
+    || (inlineText ? 'text/plain' : 'application/vnd.google-apps.document');
+  const name = src.name || body.name || 'Untitled meeting notes';
+  const webViewLink = src.webViewLink || body.webViewLink
+    || (String(fileId).startsWith('inline-')
+      ? ''
+      : `https://drive.google.com/file/d/${fileId}/view`);
+  return {
+    fileId,
+    name,
+    mimeType,
+    webViewLink,
+    inlineText,
+  };
+}
+
 export function extractJson(text) {
   const raw = String(text || '');
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);

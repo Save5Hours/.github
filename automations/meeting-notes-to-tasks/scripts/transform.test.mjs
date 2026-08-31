@@ -9,6 +9,7 @@ import {
   buildNotionPage,
   extractJson,
   mapAssignee,
+  normalizeMeetingInput,
   noteTextIsReady,
   parseOpenRouterContent,
   skipDuplicateTasks,
@@ -30,6 +31,34 @@ test('empty Gemini doc is not ready; paella notes are', () => {
   assert.equal(noteTextIsReady('Notes from Gemini\n'), false);
   const notes = readFileSync(join(root, 'fixtures/paella-notes.txt'), 'utf8');
   assert.equal(noteTextIsReady(notes), true);
+});
+
+test('normalizeMeetingInput accepts Drive fileId or inline webhook text', () => {
+  const fromDrive = normalizeMeetingInput({
+    id: 'abc123',
+    name: 'Gemini notes',
+    mimeType: 'application/vnd.google-apps.document',
+  });
+  assert.equal(fromDrive.fileId, 'abc123');
+  assert.equal(fromDrive.inlineText, '');
+
+  const fromWebhookBody = normalizeMeetingInput({
+    body: { fileId: 'doc-9', name: 'Meet notes' },
+  });
+  assert.equal(fromWebhookBody.fileId, 'doc-9');
+
+  const notes = readFileSync(join(root, 'fixtures/paella-notes.txt'), 'utf8');
+  const inline = normalizeMeetingInput({ body: { text: notes, name: 'Team lunch' } });
+  assert.equal(inline.name, 'Team lunch');
+  assert.match(inline.fileId, /^inline-/);
+  assert.equal(inline.mimeType, 'text/plain');
+  assert.equal(inline.inlineText, notes.trim());
+  assert.equal(
+    normalizeMeetingInput({ body: { text: notes, name: 'Team lunch' } }).fileId,
+    inline.fileId,
+  );
+
+  assert.throws(() => normalizeMeetingInput({}), /fileId or notes text/);
 });
 
 test('paella fixture becomes three HQ Tasks payloads', () => {

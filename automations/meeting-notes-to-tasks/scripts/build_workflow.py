@@ -37,27 +37,9 @@ def n8n_inline_mjs(path: Path) -> str:
 
 TRANSFORM_JS = n8n_inline_mjs(ROOT / "lib" / "transform.mjs")
 
-NORMALIZE_CODE = r"""
+NORMALIZE_CODE = TRANSFORM_JS + "\n\n" + r"""
 const item = $input.first().json || {};
-const body = item.body && typeof item.body === 'object' ? item.body : {};
-
-const fileId = item.id || item.fileId || body.id || body.fileId;
-if (!fileId) {
-  throw new Error('Missing Google Drive fileId. Drive Trigger should send file.id; webhook body must be { "fileId": "..." }.');
-}
-
-const mimeType = item.mimeType || body.mimeType || 'application/vnd.google-apps.document';
-const name = item.name || body.name || '';
-const webViewLink = item.webViewLink || body.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
-
-return [{
-  json: {
-    fileId,
-    name,
-    mimeType,
-    webViewLink,
-  },
-}];
+return [{ json: normalizeMeetingInput(item) }];
 """.strip()
 
 BUILD_OPENROUTER_CODE = r"""
@@ -146,7 +128,7 @@ nodes = [
         "typeVersion": 1,
         "position": [-420, 140],
         "parameters": {
-            "content": "## Meeting notes → HQ Tasks\n\nGemini often creates an empty Doc and fills it after the meeting. This workflow watches **file created** and **file updated**, skips notes shorter than 80 characters, then sends text to OpenRouter (`openrouter/free`) and writes HQ Tasks.\n\n**Host n8n 1.123.x** (this repo Dockerfile). n8n 2.x needs extra task runners for Code nodes.\n\nReplace both Drive folder IDs before publishing. For a dry run, set a Google Doc ID on **Set test fileId** and execute **Manual test**. Connect Google Drive, Notion, OpenRouter, and the webhook secret.",
+            "content": "## Meeting notes → HQ Tasks\n\nGemini often creates an empty Doc and fills it after the meeting. This workflow watches **file created** and **file updated**, skips notes shorter than 80 characters, then sends text to OpenRouter (`openrouter/free`) and writes HQ Tasks.\n\n**Host n8n 1.123.x** (this repo Dockerfile). n8n 2.x needs extra task runners for Code nodes.\n\nSet `GEMINI_NOTES_FOLDER_ID` in Railway (or replace both Drive folder IDs). Webhook can send `{ \"fileId\" }` or `{ \"text\" }` for a dry run. Connect Google Drive, Notion, OpenRouter, and the webhook secret.",
             "height": 380,
             "width": 340,
             "color": 7,
@@ -250,11 +232,55 @@ nodes = [
         "parameters": {"jsCode": NORMALIZE_CODE},
     },
     {
+        "id": "has-inline",
+        "name": "Has inline notes",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [500, 320],
+        "parameters": {
+            "conditions": {
+                "options": {
+                    "caseSensitive": True,
+                    "leftValue": "",
+                    "typeValidation": "loose",
+                    "version": 2,
+                },
+                "conditions": [
+                    {
+                        "id": "inline-ok",
+                        "leftValue": "={{ $json.inlineText }}",
+                        "rightValue": "",
+                        "operator": {
+                            "type": "string",
+                            "operation": "notEmpty",
+                            "singleValue": True,
+                        },
+                    }
+                ],
+                "combinator": "and",
+            },
+            "options": {},
+        },
+    },
+    {
+        "id": "use-inline",
+        "name": "Use inline notes",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [740, 140],
+        "parameters": {
+            "jsCode": (
+                "const src = $input.first().json || {};\n"
+                "return [{ json: { ...src, data: src.inlineText || src.text || '' } }];"
+            ),
+        },
+    },
+    {
         "id": "only-docs",
         "name": "Only Google Docs",
         "type": "n8n-nodes-base.filter",
         "typeVersion": 2.2,
-        "position": [500, 320],
+        "position": [500, 520],
         "parameters": {
             "conditions": {
                 "options": {
@@ -284,7 +310,7 @@ nodes = [
         "name": "Download Google Doc as text",
         "type": "n8n-nodes-base.googleDrive",
         "typeVersion": 3,
-        "position": [740, 320],
+        "position": [740, 520],
         "parameters": {
             "operation": "download",
             "fileId": {
@@ -303,7 +329,7 @@ nodes = [
         "name": "Extract from File",
         "type": "n8n-nodes-base.extractFromFile",
         "typeVersion": 1,
-        "position": [980, 320],
+        "position": [980, 520],
         "parameters": {"operation": "text", "options": {}},
     },
     {
@@ -531,7 +557,14 @@ connections = {
     "Webhook": conn("Normalize file"),
     "Manual test": conn("Set test fileId"),
     "Set test fileId": conn("Normalize file"),
-    "Normalize file": conn("Only Google Docs"),
+    "Normalize file": conn("Has inline notes"),
+    "Has inline notes": {
+        "main": [
+            [{"node": "Use inline notes", "type": "main", "index": 0}],
+            [{"node": "Only Google Docs", "type": "main", "index": 0}],
+        ]
+    },
+    "Use inline notes": conn("Notes have content"),
     "Only Google Docs": conn("Download Google Doc as text"),
     "Download Google Doc as text": conn("Extract from File"),
     "Extract from File": conn("Notes have content"),
@@ -548,6 +581,7 @@ connections = {
 }
 
 workflow = {
+    "id": "KfrQb6c79aJPPxYE",
     "name": "Meeting notes → HQ Tasks",
     "nodes": nodes,
     "connections": connections,

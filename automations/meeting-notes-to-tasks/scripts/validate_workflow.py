@@ -19,6 +19,8 @@ required = [
     "Manual test",
     "Set test fileId",
     "Normalize file",
+    "Has inline notes",
+    "Use inline notes",
     "Notes have content",
     "OpenRouter",
     "Parse and map assignees",
@@ -45,6 +47,10 @@ if created != "fileCreated" or updated != "fileUpdated":
 conns = data["connections"]
 assert "Google Drive Trigger" in conns
 assert "Webhook" in conns
+assert conns["Normalize file"]["main"][0][0]["node"] == "Has inline notes"
+assert conns["Has inline notes"]["main"][0][0]["node"] == "Use inline notes"
+assert conns["Has inline notes"]["main"][1][0]["node"] == "Only Google Docs"
+assert conns["Use inline notes"]["main"][0][0]["node"] == "Notes have content"
 assert conns["Build Notion page"]["main"][0][0]["node"] == "Create Notion task"
 
 parse = nodes["Parse and map assignees"]["parameters"]["jsCode"]

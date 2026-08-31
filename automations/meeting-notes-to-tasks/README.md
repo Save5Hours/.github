@@ -19,7 +19,7 @@ Example: notes say Roman makes paella, Antoine brings beers, Martin brings chees
 **Live n8n (1.123.75):** [https://n8n-production-192e.up.railway.app/](https://n8n-production-192e.up.railway.app/) — Railway project `save5hours-n8n`. Workflow **Meeting notes → HQ Tasks** is Active. OpenRouter + Notion already wrote HQ Tasks from a webhook dry-run (`Drive file ID` = `inline-*`). Remaining: connect Drive. **Do not use `clasp login`** (Google returns `400 invalid_request` for that OAuth client). Either:
 
 - n8n native Google Drive OAuth2 (GCP Web client + Sign in; redirect `https://n8n-production-192e.up.railway.app/rest/oauth2-credential/callback`) plus a **flat** folder ID, or
-- paste `scripts/apps-script-drive-webhook.js` in [script.google.com](https://script.google.com), set `WEBHOOK_SECRET_PASTE` to the n8n Header Auth value, and run **`verifyDrivePath`** (walks Meet Recordings subfolders; no GCP client).
+- paste [`scripts/apps-script-drive-webhook.js`](https://raw.githubusercontent.com/Save5Hours/.github/cursor/n8n-meeting-notes-railway-3e35/automations/meeting-notes-to-tasks/scripts/apps-script-drive-webhook.js) in [script.google.com](https://script.google.com), set `WEBHOOK_SECRET_PASTE` to the n8n Header Auth value, and run **`verifyDrivePath`** (walks Meet Recordings subfolders; no GCP client).
 
 Do not re-POST the paella fixture.
 

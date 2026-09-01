@@ -225,6 +225,15 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
       if (!file) return;
       document.getElementById('doctext').value = await file.text();
     };
+    const newDocLink = document.querySelector('a[href="https://docs.new"]');
+    if (newDocLink) {
+      newDocLink.addEventListener('click', () => {
+        const urlEl = document.getElementById('docurl');
+        urlEl.focus();
+        const err = document.getElementById('docerr');
+        err.textContent = 'after the new tab shows docs.google.com/document/d/… paste that URL here';
+      });
+    }
     document.getElementById('gcloudform').onsubmit = () => {
       const el = document.getElementById('gcloudcode');
       el.value = el.value.replace(/\\s+/g, '');

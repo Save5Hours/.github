@@ -49,6 +49,9 @@ def main() -> None:
     notes = NOTES.read_text(encoding="utf-8").strip()
     assert "docs.new" in html
     assert "not docs.new" in html
+    assert 'a[href="https://docs.new"]' in html
+    assert "urlEl.focus()" in html
+    assert "paste that URL here" in html
     assert "gcloud-auth-code" in html
     assert 'id="gcloudcode"' in html
     assert "gcloudform" in html

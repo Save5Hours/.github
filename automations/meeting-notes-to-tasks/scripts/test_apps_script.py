@@ -62,6 +62,8 @@ def main() -> None:
     assert "Sample notes are filled" in html
     assert "option1b" in html
     assert "novalidate" in html
+    assert 'id="copyauth"' in html
+    assert "open on a phone already signed into Google" in html
     docurl = next(part for part in html.split("<input") if 'id="docurl"' in part)
     assert "required" not in docurl.split(">")[0]
     assert "Drive path verification" in html

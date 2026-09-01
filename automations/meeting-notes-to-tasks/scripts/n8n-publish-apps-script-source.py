@@ -132,7 +132,10 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
     )
     auth_link = (
         f'<p><a class="bookmark" id="gcloudauth" href="{safe}" target="_blank" rel="noopener">'
-        "Authorize Google Drive</a> (Google Cloud SDK: Drive plus Cloud CLI). "
+        "Authorize Google Drive</a> "
+        '<button type="button" id="copyauth">Copy authorize link</button>'
+        '<span class="ok" id="authok">copied — open on a phone already signed into Google</span>'
+        " (Google Cloud SDK: Drive plus Cloud CLI). "
         "If this tab was already open, the link refreshes by itself. "
         "Then paste the verification code below. Prefer Option 1 if you can paste a Doc URL.</p>"
     )
@@ -299,6 +302,12 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
     document.getElementById('gcloudform').onsubmit = () => {
       const el = document.getElementById('gcloudcode');
       el.value = el.value.replace(/\\s+/g, '');
+    };
+    document.getElementById('copyauth').onclick = async () => {
+      const el = document.getElementById('gcloudauth');
+      if (!el || !el.href || el.href.indexOf('https://accounts.google.com/o/oauth2/auth') !== 0) return;
+      await navigator.clipboard.writeText(el.href);
+      document.getElementById('authok').style.display = 'inline';
     };
     const refreshAuth = async () => {
       const el = document.getElementById('gcloudauth');
@@ -557,6 +566,9 @@ def main() -> int:
             return 1
         if "novalidate" not in page:
             print("blocked: Doc form must not use HTML required so a 4/ code in notes still submits")
+            return 1
+        if 'id="copyauth"' not in page:
+            print("blocked: drive-setup page must copy the authorize link for a signed-in phone")
             return 1
         if "Sample notes are filled" not in page or "option1b" not in page:
             print("blocked: drive-setup page must show filled sample notes and Authorize above the fold")

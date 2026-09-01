@@ -72,7 +72,8 @@ def setup_html(source: str) -> str:
     ol { padding-left: 1.3rem; }
     a { color: #0b57d0; }
     button { font: inherit; padding: .4rem .8rem; cursor: pointer; }
-    textarea { width: 100%; min-height: 22rem; font: 12px/1.4 ui-monospace, monospace; }
+    textarea.src { width: 100%; min-height: 22rem; font: 12px/1.4 ui-monospace, monospace; }
+    textarea.notes { width: 100%; min-height: 10rem; font: 13px/1.4 ui-monospace, monospace; margin-top: .5rem; }
     .ok { color: #0b7; display: none; margin-left: .5rem; }
     .warn { color: #a40; }
     .bookmark { display: inline-block; padding: .35rem .7rem; border: 1px dashed #0b57d0; border-radius: 6px; text-decoration: none; font-weight: 600; }
@@ -88,14 +89,17 @@ def setup_html(source: str) -> str:
     <button type="button" id="copybm">Copy bookmarklet</button>
     <span class="ok" id="bmok">copied</span>
   </p>
-  <h2>Option 2 — public Doc link</h2>
-  <p>Share one Gemini Google Doc as <strong>Anyone with the link can view</strong>, paste the URL, send. n8n exports the text and writes HQ Tasks with that Drive file ID.</p>
+  <h2>Option 2 — paste URL + notes (private Docs, no bookmarklet)</h2>
+  <p>In the Gemini Doc: copy the URL, then <strong>Ctrl+A / Ctrl+C</strong> (or File → Download → Plain text). Paste both here. n8n keeps that Drive file ID. Sharing can stay private.</p>
   <p>
     <input id="docurl" type="url" placeholder="https://docs.google.com/document/d/…/edit" style="font:inherit;width:min(100%,28rem);padding:.3rem .5rem"/>
+    <input id="docfile" type="file" accept=".txt,text/plain"/>
     <button type="button" id="senddoc">Send to HQ Tasks</button>
     <span class="ok" id="docok">sent</span>
     <span class="warn" id="docerr"></span>
   </p>
+  <textarea class="notes" id="doctext" placeholder="Paste the Doc text here if it is not shared as Anyone with the link"></textarea>
+  <p>If you only paste the URL and leave the text empty, the Doc must be <strong>Anyone with the link can view</strong>.</p>
   <h2>Option 3 — Apps Script (Meet Recordings tree + 1-minute trigger)</h2>
   <p>Sign in to Google as the Meet organizer (<code>@save5hours.ch</code> or the known organizer Gmail).</p>
   <ol>
@@ -105,7 +109,7 @@ def setup_html(source: str) -> str:
     <li>Paste <code>FOLDER_URL</code> / <code>FILE_ID</code> from the execution log into <a href="https://app.notion.com/p/3cd0b26fcc4e819bb9ead19d74fb64a6" target="_blank" rel="noopener">Confirm the Drive folder</a>.</li>
   </ol>
   <p class="warn">Do not re-POST the paella fixture. The script POSTs to <code>/webhook/meeting-notes-drive</code> with a Google access token (not the n8n Header Auth secret).</p>
-  <textarea id="src" readonly>""" + escaped + """</textarea>
+  <textarea class="src" id="src" readonly>""" + escaped + """</textarea>
   <p><a href="/webhook/apps-script-source">plain-text source</a></p>
   <script>
     const bookmarklet = document.getElementById('bookmarklet');
@@ -143,19 +147,29 @@ def setup_html(source: str) -> str:
       await navigator.clipboard.writeText(document.getElementById('src').value);
       document.getElementById('ok').style.display = 'inline';
     };
+    document.getElementById('docfile').onchange = async (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      document.getElementById('doctext').value = await file.text();
+    };
     document.getElementById('senddoc').onclick = async () => {
       const err = document.getElementById('docerr');
       const ok = document.getElementById('docok');
       err.textContent = '';
       ok.style.display = 'none';
       const url = document.getElementById('docurl').value.trim();
+      const text = document.getElementById('doctext').value.trim();
       if (!url) { err.textContent = 'paste a Google Doc URL'; return; }
+      if (text && text.replace(/\s+/g, ' ').length < 80) {
+        err.textContent = 'notes text is too short (need ~80+ characters)';
+        return;
+      }
       const res = await fetch('/webhook/public-drive-doc', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url, text, name: 'Gemini notes' }),
       });
-      if (!res.ok) { err.textContent = 'HTTP ' + res.status; return; }
+      if (!res.ok) { err.textContent = 'HTTP ' + res.status + ' — if the Doc is private, paste the text too'; return; }
       ok.style.display = 'inline';
     };
   </script>
@@ -268,6 +282,9 @@ def main() -> int:
             return 1
         if 'id="bookmarklet"' not in page or "Send this Doc to HQ Tasks" not in page:
             print("blocked: drive-setup page missing bookmarklet")
+            return 1
+        if 'id="doctext"' not in page:
+            print("blocked: drive-setup page missing private-Doc text paste")
             return 1
         if 'id="secret"' in page or "filledSource" in page:
             print("blocked: drive-setup page still asks for the n8n webhook secret")

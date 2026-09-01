@@ -81,27 +81,30 @@ def setup_html(source: str) -> str:
 </head>
 <body>
   <h1>Connect Gemini Drive notes</h1>
-  <p>n8n already writes HQ Tasks from OpenRouter. You do <strong>not</strong> need an n8n login.</p>
-  <h2>Option 1 — bookmarklet (fastest; private Docs work)</h2>
-  <p>Drag this link to your bookmarks bar. Open a Gemini notes tab on <strong>docs.google.com</strong> (stay signed in), then click the bookmark. Your browser exports the Doc and POSTs <code>fileId</code> + text. No sharing change. No Apps Script. No n8n Sign in.</p>
-  <p>
-    <a class="bookmark" id="bookmarklet" href="#">Send this Doc to HQ Tasks</a>
-    <button type="button" id="copybm">Copy bookmarklet</button>
-    <span class="ok" id="bmok">copied</span>
-  </p>
-  <h2>Option 2 — paste URL + notes (private Docs, no bookmarklet)</h2>
-  <p>In the Gemini Doc: copy the URL, then <strong>Ctrl+A / Ctrl+C</strong> (or File → Download → Plain text). Paste both here. n8n keeps that Drive file ID. Sharing can stay private. After send you should see <strong>Received</strong> and the Drive file ID — not a blank page.</p>
+  <p>n8n already writes HQ Tasks from OpenRouter. You do <strong>not</strong> need an n8n login. Chrome often blocks <code>javascript:</code> bookmarks, so <strong>paste URL + notes is the reliable path</strong>.</p>
+  <h2>Option 1 — paste URL + notes (private Docs work)</h2>
+  <p>In the Gemini Doc: copy the URL, then <strong>Ctrl+A / Ctrl+C</strong> (or File → Download → Plain text). Paste both here, or use <strong>Paste clipboard</strong>. n8n keeps that Drive file ID. Sharing can stay private. After send you should see <strong>Received</strong> and the Drive file ID — not a blank page.</p>
   <form id="docform" method="POST" action="/webhook/public-drive-doc" accept-charset="UTF-8">
     <p>
       <input id="docurl" name="url" type="url" required placeholder="https://docs.google.com/document/d/…/edit" style="font:inherit;width:min(100%,28rem);padding:.3rem .5rem"/>
       <input id="docfile" type="file" accept=".txt,text/plain"/>
       <input type="hidden" name="name" value="Gemini notes"/>
+      <button type="button" id="pasteclip">Paste clipboard</button>
       <button type="submit" id="senddoc">Send to HQ Tasks</button>
       <span class="warn" id="docerr"></span>
     </p>
     <textarea class="notes" id="doctext" name="text" placeholder="Paste the Doc text here if it is not shared as Anyone with the link"></textarea>
   </form>
   <p>If you only paste the URL and leave the text empty, the Doc must be <strong>Anyone with the link can view</strong>.</p>
+  <h2>Option 2 — bookmarklet or console (same export, private Docs)</h2>
+  <p>Drag this link to your bookmarks bar, then open the Gemini Doc on <strong>docs.google.com</strong> and click it. If Chrome strips <code>javascript:</code> bookmarks: open the Doc → F12 → Console → <strong>Copy console snippet</strong> → paste → Enter.</p>
+  <p>
+    <a class="bookmark" id="bookmarklet" href="#">Send this Doc to HQ Tasks</a>
+    <button type="button" id="copybm">Copy bookmarklet</button>
+    <button type="button" id="copyconsole">Copy console snippet</button>
+    <span class="ok" id="bmok">copied</span>
+    <span class="ok" id="conok">copied</span>
+  </p>
   <h2>Option 3 — Apps Script (Meet Recordings tree + 1-minute trigger)</h2>
   <p>Sign in to Google as the Meet organizer (<code>@save5hours.ch</code> or the known organizer Gmail).</p>
   <ol>
@@ -145,9 +148,30 @@ def setup_html(source: str) -> str:
       await navigator.clipboard.writeText(href);
       document.getElementById('bmok').style.display = 'inline';
     };
+    document.getElementById('copyconsole').onclick = async () => {
+      await navigator.clipboard.writeText(src);
+      document.getElementById('conok').style.display = 'inline';
+    };
     document.getElementById('copy').onclick = async () => {
       await navigator.clipboard.writeText(document.getElementById('src').value);
       document.getElementById('ok').style.display = 'inline';
+    };
+    document.getElementById('pasteclip').onclick = async () => {
+      const err = document.getElementById('docerr');
+      err.textContent = '';
+      let clip = '';
+      try { clip = await navigator.clipboard.readText(); } catch (e) {
+        err.textContent = 'allow clipboard, or paste into the fields';
+        return;
+      }
+      const match = clip.match(/https?:\\/\\/(?:docs|drive)\\.google\\.com\\S+/i);
+      if (match) {
+        document.getElementById('docurl').value = match[0];
+        const rest = clip.replace(match[0], '').trim();
+        if (rest) document.getElementById('doctext').value = rest;
+      } else if (clip.trim()) {
+        document.getElementById('doctext').value = clip;
+      }
     };
     document.getElementById('docfile').onchange = async (event) => {
       const file = event.target.files && event.target.files[0];
@@ -281,6 +305,9 @@ def main() -> int:
             return 1
         if 'id="doctext"' not in page:
             print("blocked: drive-setup page missing private-Doc text paste")
+            return 1
+        if 'id="pasteclip"' not in page or 'id="copyconsole"' not in page:
+            print("blocked: drive-setup page missing clipboard / console helpers")
             return 1
         if 'id="secret"' in page or "filledSource" in page:
             print("blocked: drive-setup page still asks for the n8n webhook secret")

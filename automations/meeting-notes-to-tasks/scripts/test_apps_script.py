@@ -61,6 +61,9 @@ def main() -> None:
     assert "gcloudCodeRe" in html
     assert "Sample notes are filled" in html
     assert "option1b" in html
+    assert "novalidate" in html
+    docurl = next(part for part in html.split("<input") if 'id="docurl"' in part)
+    assert "required" not in docurl.split(">")[0]
     assert "Drive path verification" in html
     assert notes.splitlines()[0] in html
     assert "Antoine will publish the Drive webhook runbook" in html

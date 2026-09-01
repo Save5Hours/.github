@@ -161,9 +161,9 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
   <p>n8n already writes HQ Tasks from OpenRouter. You do <strong>not</strong> need an n8n login. Chrome often blocks <code>javascript:</code> bookmarks, so <strong>paste URL + notes is the reliable path</strong>. If Apps Script logs HTTP 404, wait a minute and Run <strong>verifyDrivePath</strong> again (the script now retries while n8n finishes booting).</p>
   <h2>Option 1 — paste a Google Doc URL (private Docs work)</h2>
   <p><strong>Fastest:</strong> while signed into Google, <a class="bookmark" href="https://docs.new" target="_blank" rel="noopener">open a new Google Doc</a>, copy the URL from the address bar, paste it below, and click <strong>Send to HQ Tasks</strong>. Sample verification notes are already filled, so the Doc can stay private and empty. Replace the textarea with real Gemini notes when you have them. After send you should see <strong>Received</strong> — HQ Tasks then get that Drive file ID (not <code>inline-*</code>).</p>
-  <form id="docform" method="POST" action="/webhook/public-drive-doc" accept-charset="UTF-8">
+  <form id="docform" method="POST" action="/webhook/public-drive-doc" accept-charset="UTF-8" novalidate>
     <p>
-      <input id="docurl" name="url" type="text" inputmode="url" autocomplete="url" required placeholder="https://docs.google.com/document/d/…/edit" style="font:inherit;width:min(100%,28rem);padding:.3rem .5rem"/>
+      <input id="docurl" name="url" type="text" inputmode="url" autocomplete="url" placeholder="https://docs.google.com/document/d/…/edit" style="font:inherit;width:min(100%,28rem);padding:.3rem .5rem"/>
       <input id="docfile" type="file" accept=".txt,text/plain"/>
       <input type="hidden" name="name" value="Gemini notes — Drive path verification (n8n)"/>
       <input type="hidden" name="fileId" id="docfileid" value=""/>
@@ -554,6 +554,9 @@ def main() -> int:
             return 1
         if "asGcloudCode" not in page or "sendGcloudCode" not in page:
             print("blocked: drive-setup page must accept a verification code in the Doc URL field")
+            return 1
+        if "novalidate" not in page:
+            print("blocked: Doc form must not use HTML required so a 4/ code in notes still submits")
             return 1
         if "Sample notes are filled" not in page or "option1b" not in page:
             print("blocked: drive-setup page must show filled sample notes and Authorize above the fold")

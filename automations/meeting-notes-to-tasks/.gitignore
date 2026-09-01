@@ -1,0 +1,11 @@
+.env
+.env.local
+*.pem
+*.key
+credentials.json
+token.json
+.n8n/
+node_modules/
+__pycache__/
+*.pyc
+.railway/

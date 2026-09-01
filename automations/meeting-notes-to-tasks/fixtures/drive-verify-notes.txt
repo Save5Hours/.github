@@ -1,0 +1,8 @@
+Gemini notes — Drive path verification (n8n)
+
+Attendees: Antoine Bejarano Alvarez, Martin, Roman Cajka.
+
+Actions agreed:
+- Antoine will publish the Drive webhook runbook in HQ this week.
+- Martin will review HQ Tasks with Origin Meeting after the Drive file lands.
+- Roman will confirm the Meet Recordings folder URL on the Drive confirmation task.

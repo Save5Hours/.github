@@ -1,0 +1,46 @@
+name: Meeting notes automation
+
+on:
+  push:
+    paths:
+      - "automations/meeting-notes-to-tasks/**"
+      - ".github/workflows/meeting-notes-automation.yml"
+  pull_request:
+    paths:
+      - "automations/meeting-notes-to-tasks/**"
+      - ".github/workflows/meeting-notes-automation.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build and validate n8n workflow
+        working-directory: automations/meeting-notes-to-tasks
+        run: |
+          python3 scripts/build_workflow.py
+          python3 scripts/validate_workflow.py
+          python3 scripts/test_assignee_map.py
+          python3 scripts/test_drive_ids.py
+          python3 -m py_compile scripts/n8n-check-and-dry-run.py
+          python3 -m py_compile scripts/n8n-api-publish.py
+          python3 -m py_compile scripts/watch-drive-hq.py
+          python3 -m py_compile scripts/drive_ids.py
+          python3 -m py_compile scripts/n8n-publish-apps-script-source.py
+          python3 -m py_compile scripts/clasp-drive-verify.py
+          node --check scripts/n8n-provision.mjs
+          node --check scripts/apps-script-drive-webhook.js
+          python3 -m py_compile scripts/gcloud-drive-verify.py
+          python3 scripts/test_gcloud_drive_verify.py
+          python3 scripts/test_colab_notebook.py
+          python3 scripts/test_apps_script.py
+          git diff --exit-code n8n/meeting-notes-to-tasks.json
+      - name: Transform unit tests (paella → three assignees)
+        working-directory: automations/meeting-notes-to-tasks
+        run: node --test scripts/transform.test.mjs

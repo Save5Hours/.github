@@ -1,0 +1,37 @@
+name: Deploy n8n to Railway
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: automations/meeting-notes-to-tasks
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Require Railway secrets
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "Add GitHub secret RAILWAY_TOKEN (https://railway.app/account/tokens)"
+            exit 1
+          fi
+          if [ -z "$N8N_ENCRYPTION_KEY" ]; then
+            echo "Add GitHub secret N8N_ENCRYPTION_KEY (openssl rand -hex 32, set once)"
+            exit 1
+          fi
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+      - name: Deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
+          RAILWAY_WORKSPACE: ${{ secrets.RAILWAY_WORKSPACE }}
+        run: ./scripts/deploy-railway.sh

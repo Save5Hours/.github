@@ -1,0 +1,26 @@
+{
+  "meeting_title": "Team lunch",
+  "tasks": [
+    {
+      "title": "Make a paella",
+      "assignee": "ronald",
+      "priority": "Medium",
+      "due": "2026-09-04",
+      "notes": "Ronald owns cooking for Friday lunch."
+    },
+    {
+      "title": "Bring the beers",
+      "assignee": "Antoine",
+      "priority": "Medium",
+      "due": null,
+      "notes": "Antoine brings drinks."
+    },
+    {
+      "title": "Bring the cheese",
+      "assignee": "martin@save5hours.ch",
+      "priority": "Low",
+      "due": null,
+      "notes": "Martin brings cheese."
+    }
+  ]
+}

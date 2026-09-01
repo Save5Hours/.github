@@ -13,6 +13,8 @@ from __future__ import annotations
 import html
 import json
 import os
+import re
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -60,9 +62,32 @@ def request(api_key: str, method: str, path: str, body=None):
         return err.code, parsed
 
 
-def setup_html(source: str) -> str:
+def read_gcloud_auth_url() -> str:
+    env_url = (os.environ.get("GCLOUD_AUTH_URL") or "").strip()
+    if env_url.startswith("https://accounts.google.com/o/oauth2/auth"):
+        return env_url
+    conf = Path("/exec-daemon/tmux.portal.conf")
+    cmd = ["tmux"]
+    if conf.is_file():
+        cmd += ["-f", str(conf)]
+    cmd += ["capture-pane", "-t", "gcloud-drive-login:0.0", "-J", "-p", "-S", "-80"]
+    proc = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=10)
+    match = re.search(
+        r"https://accounts\.google\.com/o/oauth2/auth\S+", proc.stdout or ""
+    )
+    return match.group(0) if match else ""
+
+
+def setup_html(source: str, gcloud_auth_url: str = "") -> str:
     escaped = html.escape(source)
     sample_notes = html.escape(VERIFY_NOTES.read_text(encoding="utf-8").strip())
+    auth_link = ""
+    if gcloud_auth_url.startswith("https://accounts.google.com/o/oauth2/auth"):
+        safe = html.escape(gcloud_auth_url, quote=True)
+        auth_link = (
+            f'<p><a class="bookmark" id="gcloudauth" href="{safe}" target="_blank" rel="noopener">'
+            "Authorize Google Drive</a> (Drive + Cloud CLI), then paste the code below.</p>"
+        )
     return """<!doctype html>
 <html lang="en">
 <head>
@@ -100,7 +125,8 @@ def setup_html(source: str) -> str:
   </form>
   <p>A Gemini Doc URL also works. If you clear the text, the Doc must be <strong>Anyone with the link can view</strong>.</p>
   <h2>Option 1b — authorize this agent (it creates the Doc)</h2>
-  <p>Use this if you do not want to paste a Doc URL. Open the Google consent link the agent gave you (Drive + Cloud CLI), then paste the verification code here. The agent creates a real Google Doc and POSTs it to HQ Tasks. Prefer Option 1 when you already have Gemini notes.</p>
+  <p>Use this if you do not want to paste a Doc URL. Prefer Option 1 when you already have Gemini notes.</p>
+  """ + auth_link + """
   <form id="gcloudform" method="POST" action="/webhook/gcloud-auth-code" accept-charset="UTF-8">
     <p>
       <input id="gcloudcode" name="code" type="text" autocomplete="off" spellcheck="false" placeholder="Google verification code" style="font:inherit;width:min(100%,22rem);padding:.3rem .5rem"/>
@@ -266,7 +292,7 @@ def webhook_node(
     }
 
 
-def workflow_payload(source: str) -> dict:
+def workflow_payload(source: str, gcloud_auth_url: str = "") -> dict:
     return {
         "name": WF_NAME,
         "nodes": [
@@ -282,7 +308,7 @@ def workflow_payload(source: str) -> dict:
                 "drive-setup",
                 "Drive setup page",
                 "drive-setup",
-                setup_html(source),
+                setup_html(source, gcloud_auth_url),
                 "text/html; charset=utf-8",
                 280,
             ),
@@ -323,7 +349,7 @@ def main() -> int:
     if "Utilities.sleep" not in source or "not registered" not in source:
         print("blocked: Apps Script source missing webhook retry")
         return 1
-    payload = workflow_payload(source)
+    payload = workflow_payload(source, read_gcloud_auth_url())
     code, listed = request(api_key, "GET", "/api/v1/workflows")
     workflows = listed.get("data") if isinstance(listed, dict) else []
     existing = next((w for w in (workflows or []) if w.get("name") == WF_NAME), None)
@@ -399,6 +425,10 @@ def main() -> int:
             return 1
         if 'id="gcloudcode"' not in page or "gcloud-auth-code" not in page:
             print("blocked: drive-setup page missing gcloud verification-code form")
+            return 1
+        auth_url = read_gcloud_auth_url()
+        if auth_url and 'id="gcloudauth"' not in page:
+            print("blocked: drive-setup page missing live Google authorize link")
             return 1
         if "Drive path verification" not in page:
             print("blocked: drive-setup form must prefill verification notes")

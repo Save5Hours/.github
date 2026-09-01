@@ -58,6 +58,10 @@ def main() -> None:
     methods = {n["parameters"]["path"]: n["parameters"]["httpMethod"] for n in payload["nodes"]}
     assert methods["gcloud-auth-code"] == "POST"
     assert methods["drive-setup"] == "GET"
+    fake = "https://accounts.google.com/o/oauth2/auth?response_type=code&client_id=test"
+    linked = load_publisher().setup_html(src, fake)
+    assert 'id="gcloudauth"' in linked
+    assert "accounts.google.com/o/oauth2/auth" in linked
     print("apps script ok")
 
 

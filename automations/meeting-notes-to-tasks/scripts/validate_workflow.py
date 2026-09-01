@@ -110,6 +110,8 @@ if "notionCommentsText" not in hq_parse and "comments" not in hq_parse:
 merge_public = nodes["Merge public Doc"]["parameters"]["jsCode"]
 if "Parse HQ Drive confirmation" not in merge_public:
     raise SystemExit("Merge public Doc must read Parse HQ Drive confirmation meta")
+if "publicExportLooksLikeHtml" not in merge_public:
+    raise SystemExit("Merge public Doc must reject HTML export bodies")
 assert nodes["Public Drive Doc"]["parameters"]["path"] == "public-drive-doc"
 parse_public = nodes["Parse Drive URL"]["parameters"]["jsCode"]
 if "extractPublicDrivePayload" not in parse_public:

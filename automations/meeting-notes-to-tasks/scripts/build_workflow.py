@@ -150,9 +150,8 @@ const raw = $input.first().json;
 let text = '';
 if (typeof raw === 'string') text = raw;
 else if (raw && typeof raw === 'object') text = String(raw.data || raw.text || raw.body || '');
-const lower = text.toLowerCase();
-if (lower.includes('<html') && (lower.includes('sign in') || lower.includes('accounts.google'))) {
-  throw new Error('Could not export the Doc. Share it as Anyone with the link can view.');
+if (publicExportLooksLikeHtml(text)) {
+  throw new Error('Could not export the Doc. Share it as Anyone with the link can view, or paste the notes text.');
 }
 if (!noteTextIsReady(text)) {
   throw new Error('Doc is empty or not shared publicly');

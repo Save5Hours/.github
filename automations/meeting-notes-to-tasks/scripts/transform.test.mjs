@@ -13,6 +13,7 @@ import {
   mapAssignee,
   normalizeMeetingInput,
   noteTextIsReady,
+  publicExportLooksLikeHtml,
   parseDriveFileId,
   parseHqDriveConfirmation,
   parseOpenRouterContent,
@@ -35,6 +36,19 @@ test('empty Gemini doc is not ready; paella notes are', () => {
   assert.equal(noteTextIsReady('Notes from Gemini\n'), false);
   const notes = readFileSync(join(root, 'fixtures/paella-notes.txt'), 'utf8');
   assert.equal(noteTextIsReady(notes), true);
+});
+
+test('public Google export HTML is not treated as notes', () => {
+  const notes = readFileSync(join(root, 'fixtures/paella-notes.txt'), 'utf8');
+  assert.equal(publicExportLooksLikeHtml(notes), false);
+  assert.equal(
+    publicExportLooksLikeHtml('<!DOCTYPE html><html lang="en"><head></head><body>Google Docs</body></html>'),
+    true,
+  );
+  assert.equal(
+    publicExportLooksLikeHtml('<HTML><BODY>accounts.google.com sign-in</BODY></HTML>'),
+    true,
+  );
 });
 
 test('Apps Script VERIFY_NOTES matches drive-verify fixture', () => {

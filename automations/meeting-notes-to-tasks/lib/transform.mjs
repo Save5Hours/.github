@@ -254,6 +254,16 @@ export function noteTextIsReady(text) {
   return String(text || '').replace(/\s+/g, ' ').trim().length >= MIN_NOTE_CHARS;
 }
 
+/** True when a public export URL returned login/error HTML instead of notes. */
+export function publicExportLooksLikeHtml(text) {
+  const lower = String(text || '').toLowerCase();
+  return (
+    lower.includes('<html')
+    || lower.includes('<!doctype html')
+    || lower.includes('accounts.google')
+  );
+}
+
 function inlineFileId(text) {
   let hash = 0;
   const raw = String(text || '');

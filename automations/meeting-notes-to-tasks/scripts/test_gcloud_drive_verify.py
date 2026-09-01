@@ -144,6 +144,17 @@ def main() -> None:
     assert any("workflowId=RU7qrw4zZPhZh6Kw" in url for url in listed_urls)
     assert not any(url.endswith("/executions?limit=20") for url in listed_urls)
 
+    timed_out: set[str] = set()
+
+    def boom(_req, timeout=45):
+        raise TimeoutError("The read operation timed out")
+
+    with mock.patch.object(mod.urllib.request, "urlopen", boom):
+        with mock.patch("sys.stdout", io.StringIO()) as out:
+            assert mod.n8n_latest_auth_code("fake-key", timed_out) == ""
+            assert "timed out" in out.getvalue()
+    assert not timed_out
+
     args = mod.parse_args(["--watch", "--interval", "12"])
     assert args.watch is True
     assert args.interval == 12

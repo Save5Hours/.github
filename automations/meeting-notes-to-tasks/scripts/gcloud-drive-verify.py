@@ -135,18 +135,27 @@ def executions_list_url() -> str:
     return f"{N8N_BASE}/api/v1/executions?{query}"
 
 
+def n8n_get_json(req: urllib.request.Request, timeout: int = 45) -> dict:
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
 def n8n_latest_auth_code(api_key: str, seen: set[str] | None = None) -> str:
     """Return a pasted Google verification code. Never log it.
 
     Reads the Drive-setup workflow only. The meeting-notes HQ poll fires every
     minute and would otherwise push this POST out of a global last-20 list.
+    Timeouts and n8n blips return empty so --watch can keep polling.
     """
     req = urllib.request.Request(
         executions_list_url(),
         headers={"X-N8N-API-KEY": api_key, "Accept": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        listed = json.loads(resp.read().decode("utf-8"))
+    try:
+        listed = n8n_get_json(req)
+    except (TimeoutError, urllib.error.URLError, OSError):
+        print("n8n executions list timed out")
+        return ""
     for row in listed.get("data") or []:
         if row.get("mode") != "webhook":
             continue
@@ -157,8 +166,11 @@ def n8n_latest_auth_code(api_key: str, seen: set[str] | None = None) -> str:
             f"{N8N_BASE}/api/v1/executions/{eid}?includeData=true",
             headers={"X-N8N-API-KEY": api_key, "Accept": "application/json"},
         )
-        with urllib.request.urlopen(detail_req, timeout=30) as resp:
-            detail = json.loads(resp.read().decode("utf-8"))
+        try:
+            detail = n8n_get_json(detail_req)
+        except (TimeoutError, urllib.error.URLError, OSError):
+            print(f"n8n execution {eid} timed out")
+            continue
         if seen is not None:
             seen.add(eid)
         run = (detail.get("data") or {}).get("resultData") or {}
@@ -293,7 +305,11 @@ def try_once(notes: str, api_key: str, seen: set[str]) -> int:
 def watch(notes: str, api_key: str, interval: int) -> int:
     seen: set[str] = set()
     while True:
-        rc = try_once(notes, api_key, seen)
+        try:
+            rc = try_once(notes, api_key, seen)
+        except (TimeoutError, urllib.error.URLError, OSError) as err:
+            print(f"watch iteration failed: {type(err).__name__}")
+            rc = 2
         if rc == 0:
             return 0
         print("waiting for Google verification code or gcloud ADC")

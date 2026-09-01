@@ -36,17 +36,7 @@ jobs:
           python3 -m py_compile scripts/clasp-drive-verify.py
           node --check scripts/n8n-provision.mjs
           node --check scripts/apps-script-drive-webhook.js
-          python3 - <<'PY'
-import json
-from pathlib import Path
-nb = json.loads(Path('scripts/colab_drive_verify.ipynb').read_text())
-src = ''.join(nb['cells'][1]['source'])
-assert 'meeting-notes-drive' in src
-assert 'googleAccessToken' in src
-assert 'Antoine will publish the Drive webhook runbook' in src
-assert 'WEBHOOK_SECRET' not in src
-print('colab notebook ok')
-PY
+          python3 scripts/test_colab_notebook.py
           git diff --exit-code n8n/meeting-notes-to-tasks.json
       - name: Transform unit tests (paella → three assignees)
         working-directory: automations/meeting-notes-to-tasks

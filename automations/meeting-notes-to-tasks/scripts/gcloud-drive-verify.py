@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
 """Create a real Google Doc with gcloud ADC and POST it to n8n.
 
-Uses `gcloud auth print-access-token` after `gcloud auth login --enable-gdrive-access`.
-POSTs {fileId, text} to /webhook/public-drive-doc (no WEBHOOK_SECRET, not the paella
-fixture, not /webhook/meeting-notes). Exit 2 if gcloud is not logged in.
-Does not print tokens.
+Uses `gcloud auth print-access-token` (or ADC) after `gcloud auth login
+--enable-gdrive-access`. POSTs {fileId, text} to /webhook/public-drive-doc
+(no WEBHOOK_SECRET, not the paella fixture, not /webhook/meeting-notes).
+Exit 2 if gcloud is not logged in. Does not print tokens or verification codes.
+
+`--watch` polls the Drive-setup workflow for a pasted Google verification code
+so HQ empty-polls cannot bury that POST in the global executions list.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -27,6 +33,7 @@ DRIVE_UPLOAD = (
 )
 TITLE = "Gemini notes — Drive path verification (n8n)"
 N8N_BASE = "https://n8n-production-192e.up.railway.app"
+DRIVE_SETUP_WF = "RU7qrw4zZPhZh6Kw"
 GCLOUD_CANDIDATES = [
     Path.home() / "google-cloud-sdk-dl" / "google-cloud-sdk" / "bin" / "gcloud",
     Path("/usr/bin/gcloud"),
@@ -117,9 +124,21 @@ def submit_code_to_tmux(code: str) -> bool:
     return True
 
 
-def n8n_latest_auth_code(api_key: str) -> str:
+def executions_list_url() -> str:
+    query = urllib.parse.urlencode(
+        {"workflowId": DRIVE_SETUP_WF, "limit": 50}
+    )
+    return f"{N8N_BASE}/api/v1/executions?{query}"
+
+
+def n8n_latest_auth_code(api_key: str, seen: set[str] | None = None) -> str:
+    """Return a pasted Google verification code. Never log it.
+
+    Reads the Drive-setup workflow only. The meeting-notes HQ poll fires every
+    minute and would otherwise push this POST out of a global last-20 list.
+    """
     req = urllib.request.Request(
-        f"{N8N_BASE}/api/v1/executions?limit=20",
+        executions_list_url(),
         headers={"X-N8N-API-KEY": api_key, "Accept": "application/json"},
     )
     with urllib.request.urlopen(req, timeout=30) as resp:
@@ -127,8 +146,8 @@ def n8n_latest_auth_code(api_key: str) -> str:
     for row in listed.get("data") or []:
         if row.get("mode") != "webhook":
             continue
-        eid = row.get("id")
-        if not eid:
+        eid = str(row.get("id") or "")
+        if not eid or (seen is not None and eid in seen):
             continue
         detail_req = urllib.request.Request(
             f"{N8N_BASE}/api/v1/executions/{eid}?includeData=true",
@@ -145,6 +164,8 @@ def n8n_latest_auth_code(api_key: str) -> str:
             for item in mains or []:
                 found = parse_gcloud_auth_code(item.get("json") or {})
                 if found:
+                    if seen is not None:
+                        seen.add(eid)
                     return found
     return ""
 
@@ -153,16 +174,24 @@ def access_token(gcloud: str | None = None) -> str:
     binary = gcloud if gcloud is not None else gcloud_bin()
     if not binary:
         return ""
-    proc = subprocess.run(
+    commands = (
         [binary, "auth", "print-access-token"],
-        check=False,
-        text=True,
-        capture_output=True,
-        timeout=30,
+        [binary, "auth", "application-default", "print-access-token"],
     )
-    if proc.returncode != 0:
-        return ""
-    return (proc.stdout or "").strip()
+    for args in commands:
+        proc = subprocess.run(
+            args,
+            check=False,
+            text=True,
+            capture_output=True,
+            timeout=30,
+        )
+        if proc.returncode != 0:
+            continue
+        token = (proc.stdout or "").strip()
+        if token and " " not in token and "\n" not in token:
+            return token
+    return ""
 
 
 def create_google_doc(token: str, name: str, text: str) -> dict:
@@ -238,27 +267,57 @@ def run(token: str, notes: str) -> int:
     return post_public_webhook(created, notes)
 
 
-def main() -> int:
+def wait_for_token(seconds: int = 30) -> str:
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        token = access_token()
+        if token:
+            return token
+        time.sleep(2)
+    return access_token()
+
+
+def try_once(notes: str, api_key: str, seen: set[str]) -> int:
+    token = access_token()
+    if not token and api_key:
+        code = n8n_latest_auth_code(api_key, seen)
+        if code and submit_code_to_tmux(code):
+            token = wait_for_token(30)
+    return run(token, notes)
+
+
+def watch(notes: str, api_key: str, interval: int) -> int:
+    seen: set[str] = set()
+    while True:
+        rc = try_once(notes, api_key, seen)
+        if rc == 0:
+            return 0
+        print("waiting for Google verification code or gcloud ADC")
+        time.sleep(max(5, interval))
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="Poll Drive-setup for a verification code until a real Doc is posted",
+    )
+    parser.add_argument("--interval", type=int, default=15)
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     notes = NOTES.read_text(encoding="utf-8")
     if "Antoine will publish the Drive webhook runbook" not in notes:
         print("blocked: verification notes fixture missing assignees")
         return 1
-    token = access_token()
-    if not token:
-        env = load_dotenv()
-        api_key = env.get("N8N_API_KEY") or os.environ.get("N8N_API_KEY") or ""
-        if api_key:
-            code = n8n_latest_auth_code(api_key)
-            if code:
-                if submit_code_to_tmux(code):
-                    import time
-
-                    for _ in range(12):
-                        time.sleep(2)
-                        token = access_token()
-                        if token:
-                            break
-    return run(token, notes)
+    env = load_dotenv()
+    api_key = env.get("N8N_API_KEY") or os.environ.get("N8N_API_KEY") or ""
+    if args.watch:
+        return watch(notes, api_key, args.interval)
+    return try_once(notes, api_key, set())
 
 
 if __name__ == "__main__":

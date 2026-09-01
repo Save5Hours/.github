@@ -62,6 +62,7 @@ def main() -> None:
     linked = load_publisher().setup_html(src, fake)
     assert 'id="gcloudauth"' in linked
     assert "accounts.google.com/o/oauth2/auth" in linked
+    assert "Prefer Option 1" in linked
     print("apps script ok")
 
 

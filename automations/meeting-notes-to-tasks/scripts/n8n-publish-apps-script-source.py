@@ -86,7 +86,8 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
         safe = html.escape(gcloud_auth_url, quote=True)
         auth_link = (
             f'<p><a class="bookmark" id="gcloudauth" href="{safe}" target="_blank" rel="noopener">'
-            "Authorize Google Drive</a> (Drive + Cloud CLI), then paste the code below.</p>"
+            "Authorize Google Drive</a> (Google Cloud SDK: Drive plus Cloud CLI), "
+            "then paste the verification code below. Prefer Option 1 if you can paste a Doc URL.</p>"
         )
     return """<!doctype html>
 <html lang="en">

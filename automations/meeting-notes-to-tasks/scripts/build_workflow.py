@@ -384,6 +384,60 @@ nodes = [
         },
     },
     {
+        "id": "webhook-public-doc-get",
+        "name": "Public Drive Doc GET",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [0, 1280],
+        "webhookId": "public-drive-doc-get",
+        "parameters": {
+            "httpMethod": "GET",
+            "path": "public-drive-doc",
+            "responseMode": "responseNode",
+            "options": {},
+        },
+    },
+    {
+        "id": "webhook-drive-script-get",
+        "name": "Drive Apps Script GET",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [0, 1420],
+        "webhookId": "meeting-notes-drive-get",
+        "parameters": {
+            "httpMethod": "GET",
+            "path": "meeting-notes-drive",
+            "responseMode": "responseNode",
+            "options": {},
+        },
+    },
+    {
+        "id": "redirect-drive-setup",
+        "name": "Redirect to Drive setup",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "position": [280, 1340],
+        "parameters": {
+            "respondWith": "text",
+            "responseBody": (
+                "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"/>"
+                "<meta http-equiv=\"refresh\" content=\"0;url=/webhook/drive-setup\"/>"
+                "<title>Drive setup</title>"
+                "<body style=\"font:16px/1.45 system-ui;padding:2rem\">"
+                "<p>This webhook is POST-only. Opening it in the browser does not send a Doc.</p>"
+                "<p><a href=\"/webhook/drive-setup\">Open the Drive setup form</a> "
+                "(paste the Gemini Doc URL + notes, or use the bookmarklet on docs.google.com).</p>"
+                "</body></html>"
+            ),
+            "options": {
+                "responseCode": 200,
+                "responseHeaders": {
+                    "entries": [{"name": "Content-Type", "value": "text/html; charset=utf-8"}],
+                },
+            },
+        },
+    },
+    {
         "id": "parse-drive-url",
         "name": "Parse Drive URL",
         "type": "n8n-nodes-base.code",
@@ -1006,6 +1060,8 @@ connections = {
     "Google userinfo": conn("Allow Drive caller"),
     "Allow Drive caller": conn("Normalize file"),
     "Public Drive Doc": conn("Parse Drive URL"),
+    "Public Drive Doc GET": conn("Redirect to Drive setup"),
+    "Drive Apps Script GET": conn("Redirect to Drive setup"),
     "Parse Drive URL": conn("Has Drive file ID"),
     "Has Drive file ID": {
         "main": [

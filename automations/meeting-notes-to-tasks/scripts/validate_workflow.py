@@ -21,6 +21,9 @@ required = [
     "Google userinfo",
     "Allow Drive caller",
     "Public Drive Doc",
+    "Public Drive Doc GET",
+    "Drive Apps Script GET",
+    "Redirect to Drive setup",
     "Parse Drive URL",
     "Has Drive file ID",
     "Respond public Doc",
@@ -72,6 +75,13 @@ assert conns["Extract Google token"]["main"][0][0]["node"] == "Google userinfo"
 assert conns["Google userinfo"]["main"][0][0]["node"] == "Allow Drive caller"
 assert conns["Allow Drive caller"]["main"][0][0]["node"] == "Normalize file"
 assert conns["Public Drive Doc"]["main"][0][0]["node"] == "Parse Drive URL"
+assert nodes["Public Drive Doc GET"]["parameters"]["httpMethod"] == "GET"
+assert nodes["Public Drive Doc GET"]["parameters"]["path"] == "public-drive-doc"
+assert nodes["Drive Apps Script GET"]["parameters"]["httpMethod"] == "GET"
+assert nodes["Drive Apps Script GET"]["parameters"]["path"] == "meeting-notes-drive"
+assert conns["Public Drive Doc GET"]["main"][0][0]["node"] == "Redirect to Drive setup"
+assert conns["Drive Apps Script GET"]["main"][0][0]["node"] == "Redirect to Drive setup"
+assert "/webhook/drive-setup" in nodes["Redirect to Drive setup"]["parameters"]["responseBody"]
 assert conns["Parse Drive URL"]["main"][0][0]["node"] == "Has Drive file ID"
 assert conns["Has Drive file ID"]["main"][0][0]["node"] == "Respond public Doc"
 assert conns["Has Drive file ID"]["main"][1][0]["node"] == "Respond public Doc error"

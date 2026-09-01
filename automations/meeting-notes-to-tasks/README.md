@@ -163,7 +163,7 @@ Used by curl dry-runs. The live Apps Script path is **`/webhook/meeting-notes-dr
 Production URLs after publish:
 
 - Apps Script (default): `https://YOUR-N8N-HOST/webhook/meeting-notes-drive`
-- Public Doc link, bookmarklet, or pasted notes: `https://YOUR-N8N-HOST/webhook/public-drive-doc` with `{ "url": "https://docs.google.com/document/d/FILE_ID/edit" }` (Anyone with the link) **or** `{ "url", "text" }` / form fields `fileId` + `text` (private Docs)
+- Public Doc link, bookmarklet, or pasted notes: `https://YOUR-N8N-HOST/webhook/public-drive-doc` with `{ "url": "https://docs.google.com/document/d/FILE_ID/edit" }` (Anyone with the link) **or** `{ "url", "text" }` / form fields `url` + `text` or `fileId` + `text` (private Docs). Missing URL returns **HTTP 400** HTML (not a blank 200).
 - Dry-run / Header Auth: `https://YOUR-N8N-HOST/webhook/meeting-notes`
 
 Body:

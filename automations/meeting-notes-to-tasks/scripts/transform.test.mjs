@@ -92,6 +92,19 @@ test('extractPublicDrivePayload reads n8n form POST with fileId + text', () => {
   const empty = extractPublicDrivePayload({ body: {} });
   assert.equal(empty.fileId, '');
   assert.equal(empty.hasText, false);
+
+  const fromBodyString = extractPublicDrivePayload({
+    body: 'https://docs.google.com/document/d/1DocVerifyFileIdNotInline99/edit',
+  });
+  assert.equal(fromBodyString.fileId, '1DocVerifyFileIdNotInline99');
+
+  const fromNotes = extractPublicDrivePayload({
+    body: {
+      text: `https://docs.google.com/document/d/1DocVerifyFileIdNotInline99/edit\n\n${notes}`,
+    },
+  });
+  assert.equal(fromNotes.fileId, '1DocVerifyFileIdNotInline99');
+  assert.equal(fromNotes.hasText, true);
 });
 
 test('driveCallerAllowed is Save 5 Hours plus known organizer Gmail', () => {

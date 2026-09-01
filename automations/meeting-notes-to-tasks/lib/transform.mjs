@@ -84,8 +84,11 @@ export function extractPublicDrivePayload(src) {
     return '';
   };
   const url = pick('url', 'driveUrl', 'docUrl');
-  const fileId = parseDriveFileId(`${pick('fileId', 'id')}\n${url}`);
   const text = pick('text', 'notes', 'inlineText');
+  let extra = '';
+  if (typeof root.body === 'string') extra = root.body;
+  else if (typeof body.body === 'string') extra = body.body;
+  const fileId = parseDriveFileId(`${pick('fileId', 'id')}\n${url}\n${text}\n${extra}`);
   const ready = noteTextIsReady(text);
   const name = pick('name', 'title') || 'Gemini notes';
   return {

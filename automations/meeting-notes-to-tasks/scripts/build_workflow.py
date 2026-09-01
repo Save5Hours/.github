@@ -127,11 +127,12 @@ return [{ json: original }];
 
 PARSE_PUBLIC_CODE = TRANSFORM_JS + "\n\n" + r"""
 const parsed = extractPublicDrivePayload($input.first().json || {});
-if (!parsed.fileId) {
-  throw new Error('Paste a Google Doc URL, or send fileId + text from the bookmarklet');
-}
-return [{ json: parsed }];
+return [{ json: { ...parsed, ok: Boolean(parsed.fileId) } }];
 """.strip()
+
+REJECT_PUBLIC_CODE = (
+    "throw new Error('Paste a Google Doc URL, or send fileId + text from the bookmarklet');\n"
+)
 
 MERGE_PUBLIC_CODE = TRANSFORM_JS + "\n\n" + r"""
 const meta = $('Parse Drive URL').first().json;
@@ -351,19 +352,52 @@ nodes = [
         "parameters": {"jsCode": PARSE_PUBLIC_CODE},
     },
     {
+        "id": "has-drive-file-id",
+        "name": "Has Drive file ID",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [400, 1100],
+        "parameters": {
+            "conditions": {
+                "options": {
+                    "caseSensitive": True,
+                    "leftValue": "",
+                    "typeValidation": "loose",
+                    "version": 2,
+                },
+                "conditions": [
+                    {
+                        "id": "drive-file-id-ok",
+                        "leftValue": "={{ $json.fileId }}",
+                        "rightValue": "",
+                        "operator": {
+                            "type": "string",
+                            "operation": "notEmpty",
+                            "singleValue": True,
+                        },
+                    }
+                ],
+                "combinator": "and",
+            },
+            "options": {},
+        },
+    },
+    {
         "id": "respond-public-doc",
         "name": "Respond public Doc",
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1.1,
-        "position": [360, 1100],
+        "position": [620, 980],
         "parameters": {
             "respondWith": "text",
             "responseBody": (
-                "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"/>"
+                "={{ '<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"/>"
                 "<title>Sent to n8n</title><body style=\"font:16px/1.45 system-ui;padding:2rem\">"
                 "<p>Received. OpenRouter will create HQ Tasks with this Drive file ID in about 30 seconds.</p>"
+                "<p>Drive file ID: <code>' + $json.fileId + '</code></p>"
                 "<p><a href=\"https://app.notion.com/p/3cd0b26fcc4e819bb9ead19d74fb64a6\">"
-                "Confirm the Drive folder</a></p></body></html>"
+                "Confirm the Drive folder</a> · "
+                "<a href=\"/webhook/drive-setup\">Back to Drive setup</a></p></body></html>' }}"
             ),
             "options": {
                 "responseCode": 200,
@@ -376,11 +410,46 @@ nodes = [
         },
     },
     {
+        "id": "respond-public-doc-error",
+        "name": "Respond public Doc error",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "position": [620, 1240],
+        "parameters": {
+            "respondWith": "text",
+            "responseBody": (
+                "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"/>"
+                "<title>Missing Google Doc</title>"
+                "<body style=\"font:16px/1.45 system-ui;padding:2rem\">"
+                "<p>Paste a Google Doc URL, and the notes text if the Doc is private.</p>"
+                "<p>Go back to <a href=\"/webhook/drive-setup\">Drive setup</a>, "
+                "or drag <strong>Send this Doc to HQ Tasks</strong> onto a "
+                "<code>docs.google.com</code> tab.</p></body></html>"
+            ),
+            "options": {
+                "responseCode": 400,
+                "responseHeaders": {
+                    "entries": [
+                        {"name": "Content-Type", "value": "text/html; charset=utf-8"}
+                    ]
+                },
+            },
+        },
+    },
+    {
+        "id": "reject-missing-drive-url",
+        "name": "Reject missing Drive URL",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [860, 1240],
+        "parameters": {"jsCode": REJECT_PUBLIC_CODE},
+    },
+    {
         "id": "has-doc-text",
         "name": "Has Doc text already",
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
-        "position": [580, 1100],
+        "position": [860, 980],
         "parameters": {
             "conditions": {
                 "options": {
@@ -411,7 +480,7 @@ nodes = [
         "name": "Export public Doc",
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
-        "position": [660, 1240],
+        "position": [1080, 1120],
         "parameters": {
             "method": "GET",
             "url": "={{ $json.exportUrl }}",
@@ -429,7 +498,7 @@ nodes = [
         "name": "Merge public Doc",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
-        "position": [880, 1240],
+        "position": [1300, 1120],
         "parameters": {"jsCode": MERGE_PUBLIC_CODE},
     },
     {
@@ -769,8 +838,15 @@ connections = {
     "Google userinfo": conn("Allow Drive caller"),
     "Allow Drive caller": conn("Normalize file"),
     "Public Drive Doc": conn("Parse Drive URL"),
-    "Parse Drive URL": conn("Respond public Doc"),
+    "Parse Drive URL": conn("Has Drive file ID"),
+    "Has Drive file ID": {
+        "main": [
+            [{"node": "Respond public Doc", "type": "main", "index": 0}],
+            [{"node": "Respond public Doc error", "type": "main", "index": 0}],
+        ]
+    },
     "Respond public Doc": conn("Has Doc text already"),
+    "Respond public Doc error": conn("Reject missing Drive URL"),
     "Has Doc text already": {
         "main": [
             [{"node": "Normalize file", "type": "main", "index": 0}],

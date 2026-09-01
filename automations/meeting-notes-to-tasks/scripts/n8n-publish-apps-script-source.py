@@ -90,15 +90,17 @@ def setup_html(source: str) -> str:
     <span class="ok" id="bmok">copied</span>
   </p>
   <h2>Option 2 — paste URL + notes (private Docs, no bookmarklet)</h2>
-  <p>In the Gemini Doc: copy the URL, then <strong>Ctrl+A / Ctrl+C</strong> (or File → Download → Plain text). Paste both here. n8n keeps that Drive file ID. Sharing can stay private.</p>
-  <p>
-    <input id="docurl" type="url" placeholder="https://docs.google.com/document/d/…/edit" style="font:inherit;width:min(100%,28rem);padding:.3rem .5rem"/>
-    <input id="docfile" type="file" accept=".txt,text/plain"/>
-    <button type="button" id="senddoc">Send to HQ Tasks</button>
-    <span class="ok" id="docok">sent</span>
-    <span class="warn" id="docerr"></span>
-  </p>
-  <textarea class="notes" id="doctext" placeholder="Paste the Doc text here if it is not shared as Anyone with the link"></textarea>
+  <p>In the Gemini Doc: copy the URL, then <strong>Ctrl+A / Ctrl+C</strong> (or File → Download → Plain text). Paste both here. n8n keeps that Drive file ID. Sharing can stay private. After send you should see <strong>Received</strong> and the Drive file ID — not a blank page.</p>
+  <form id="docform" method="POST" action="/webhook/public-drive-doc" accept-charset="UTF-8">
+    <p>
+      <input id="docurl" name="url" type="url" required placeholder="https://docs.google.com/document/d/…/edit" style="font:inherit;width:min(100%,28rem);padding:.3rem .5rem"/>
+      <input id="docfile" type="file" accept=".txt,text/plain"/>
+      <input type="hidden" name="name" value="Gemini notes"/>
+      <button type="submit" id="senddoc">Send to HQ Tasks</button>
+      <span class="warn" id="docerr"></span>
+    </p>
+    <textarea class="notes" id="doctext" name="text" placeholder="Paste the Doc text here if it is not shared as Anyone with the link"></textarea>
+  </form>
   <p>If you only paste the URL and leave the text empty, the Doc must be <strong>Anyone with the link can view</strong>.</p>
   <h2>Option 3 — Apps Script (Meet Recordings tree + 1-minute trigger)</h2>
   <p>Sign in to Google as the Meet organizer (<code>@save5hours.ch</code> or the known organizer Gmail).</p>
@@ -152,25 +154,16 @@ def setup_html(source: str) -> str:
       if (!file) return;
       document.getElementById('doctext').value = await file.text();
     };
-    document.getElementById('senddoc').onclick = async () => {
+    document.getElementById('docform').onsubmit = (event) => {
       const err = document.getElementById('docerr');
-      const ok = document.getElementById('docok');
       err.textContent = '';
-      ok.style.display = 'none';
       const url = document.getElementById('docurl').value.trim();
       const text = document.getElementById('doctext').value.trim();
-      if (!url) { err.textContent = 'paste a Google Doc URL'; return; }
+      if (!url) { event.preventDefault(); err.textContent = 'paste a Google Doc URL'; return; }
       if (text && text.replace(/\\s+/g, ' ').length < 80) {
-        err.textContent = 'notes text is too short (need ~80+ characters)';
-        return;
+        event.preventDefault();
+        err.textContent = 'notes text is too short (need ~80+ characters), or leave it empty for a public Doc';
       }
-      const res = await fetch('/webhook/public-drive-doc', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, text, name: 'Gemini notes' }),
-      });
-      if (!res.ok) { err.textContent = 'HTTP ' + res.status + ' — if the Doc is private, paste the text too'; return; }
-      ok.style.display = 'inline';
     };
   </script>
 </body>
@@ -279,6 +272,9 @@ def main() -> int:
             return 1
         if 'id="senddoc"' not in page or "public-drive-doc" not in page:
             print("blocked: drive-setup page missing public Doc form")
+            return 1
+        if 'id="docform"' not in page or 'method="POST"' not in page:
+            print("blocked: drive-setup page must POST the Doc form")
             return 1
         if 'id="bookmarklet"' not in page or "Send this Doc to HQ Tasks" not in page:
             print("blocked: drive-setup page missing bookmarklet")

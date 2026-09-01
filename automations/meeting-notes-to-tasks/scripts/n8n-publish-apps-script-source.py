@@ -62,6 +62,14 @@ def request(api_key: str, method: str, path: str, body=None):
         return err.code, parsed
 
 
+def extract_gcloud_auth_url(text: str) -> str:
+    """Return the newest Google authorize URL from tmux output (PKCE must match)."""
+    matches = re.findall(
+        r"https://accounts\.google\.com/o/oauth2/auth\S+", text or ""
+    )
+    return matches[-1] if matches else ""
+
+
 def read_gcloud_auth_url() -> str:
     env_url = (os.environ.get("GCLOUD_AUTH_URL") or "").strip()
     if env_url.startswith("https://accounts.google.com/o/oauth2/auth"):
@@ -72,10 +80,7 @@ def read_gcloud_auth_url() -> str:
         cmd += ["-f", str(conf)]
     cmd += ["capture-pane", "-t", "gcloud-drive-login:0.0", "-J", "-p", "-S", "-80"]
     proc = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=10)
-    match = re.search(
-        r"https://accounts\.google\.com/o/oauth2/auth\S+", proc.stdout or ""
-    )
-    return match.group(0) if match else ""
+    return extract_gcloud_auth_url(proc.stdout or "")
 
 
 def setup_html(source: str, gcloud_auth_url: str = "") -> str:

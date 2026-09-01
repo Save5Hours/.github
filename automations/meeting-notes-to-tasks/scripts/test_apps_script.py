@@ -63,6 +63,10 @@ def main() -> None:
     assert 'id="gcloudauth"' in linked
     assert "accounts.google.com/o/oauth2/auth" in linked
     assert "Prefer Option 1" in linked
+    old = "https://accounts.google.com/o/oauth2/auth?state=old&code_challenge=aaaa"
+    new = "https://accounts.google.com/o/oauth2/auth?state=new&code_challenge=bbbb"
+    assert load_publisher().extract_gcloud_auth_url(f"{old}\n{new}") == new
+    assert load_publisher().extract_gcloud_auth_url("") == ""
     print("apps script ok")
 
 

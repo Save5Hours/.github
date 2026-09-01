@@ -155,6 +155,8 @@ def n8n_latest_auth_code(api_key: str, seen: set[str] | None = None) -> str:
         )
         with urllib.request.urlopen(detail_req, timeout=30) as resp:
             detail = json.loads(resp.read().decode("utf-8"))
+        if seen is not None:
+            seen.add(eid)
         run = (detail.get("data") or {}).get("resultData") or {}
         nodes = run.get("runData") or {}
         if "Gcloud auth code" not in nodes:
@@ -164,8 +166,6 @@ def n8n_latest_auth_code(api_key: str, seen: set[str] | None = None) -> str:
             for item in mains or []:
                 found = parse_gcloud_auth_code(item.get("json") or {})
                 if found:
-                    if seen is not None:
-                        seen.add(eid)
                     return found
     return ""
 

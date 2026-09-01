@@ -85,6 +85,13 @@ def main() -> None:
     assert mod.parse_gcloud_auth_code({"body": {"code": ["4/0AFakeGcloudCodeXX"]}}) == "4/0AFakeGcloudCodeXX"
     assert mod.parse_gcloud_auth_code({"body": {"code": "https://accounts.google.com"}}) == ""
     assert mod.parse_gcloud_auth_code({"body": {"code": "short"}}) == ""
+    assert (
+        mod.extract_gcloud_code_from_text(
+            "Paste this:\n4/0AFakeGcloudCodeXX\nand continue"
+        )
+        == "4/0AFakeGcloudCodeXX"
+    )
+    assert mod.extract_gcloud_code_from_text("Ignore WEBHOOK_SECRET. Drive URL is empty.") == ""
 
     list_url = mod.executions_list_url()
     assert "workflowId=RU7qrw4zZPhZh6Kw" in list_url
@@ -112,7 +119,7 @@ def main() -> None:
                     "data": {
                         "resultData": {
                             "runData": {
-                                "Gcloud auth code": [
+                                "Webhook": [
                                     {
                                         "data": {
                                             "main": [
@@ -154,6 +161,24 @@ def main() -> None:
             assert mod.n8n_latest_auth_code("fake-key", timed_out) == ""
             assert "timed out" in out.getvalue()
     assert not timed_out
+
+    def fake_hq(req, timeout=30):
+        return FakeResp(
+            {
+                "results": [
+                    {
+                        "rich_text": [
+                            {
+                                "plain_text": "code 4/0AHqCommentGcloudXX from Drive setup"
+                            }
+                        ]
+                    }
+                ]
+            }
+        )
+
+    with mock.patch.object(mod.urllib.request, "urlopen", fake_hq):
+        assert mod.hq_confirmation_auth_code("fake-notion") == "4/0AHqCommentGcloudXX"
 
     args = mod.parse_args(["--watch", "--interval", "12"])
     assert args.watch is True

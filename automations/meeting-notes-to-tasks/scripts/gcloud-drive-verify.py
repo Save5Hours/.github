@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -40,6 +41,9 @@ GCLOUD_CANDIDATES = [
 ]
 TMUX_SESSION = "gcloud-drive-login"
 TMUX_CONF = "/exec-daemon/tmux.portal.conf"
+DRIVE_CONFIRM_PAGE = "3cd0b26fcc4e819bb9ead19d74fb64a6"
+# Google Cloud SDK authcode.html values look like 4/0A…
+GCLOUD_CODE_RE = re.compile(r"4/[0-9A-Za-z_\-]{10,}")
 
 
 def gcloud_bin() -> str:
@@ -95,6 +99,27 @@ def parse_gcloud_auth_code(src) -> str:
     if len(code) < 8:
         return ""
     return code
+
+
+def extract_gcloud_code_from_text(text: str) -> str:
+    """Find a Google verification code in free-form text. Never log it."""
+    raw = str(text or "")
+    match = GCLOUD_CODE_RE.search(raw)
+    if not match:
+        match = GCLOUD_CODE_RE.search("".join(raw.split()))
+    if not match:
+        return ""
+    return parse_gcloud_auth_code({"code": match.group(0)})
+
+
+def iter_execution_jsons(detail: dict):
+    run = (detail.get("data") or {}).get("resultData") or {}
+    nodes = run.get("runData") or {}
+    for runs in nodes.values():
+        for item_run in runs or []:
+            mains = ((item_run.get("data") or {}).get("main") or [[]])[0]
+            for item in mains or []:
+                yield item.get("json") or {}
 
 
 def submit_code_to_tmux(code: str) -> bool:
@@ -173,16 +198,35 @@ def n8n_latest_auth_code(api_key: str, seen: set[str] | None = None) -> str:
             continue
         if seen is not None:
             seen.add(eid)
-        run = (detail.get("data") or {}).get("resultData") or {}
-        nodes = run.get("runData") or {}
-        if "Gcloud auth code" not in nodes:
-            continue
-        for item_run in nodes["Gcloud auth code"]:
-            mains = ((item_run.get("data") or {}).get("main") or [[]])[0]
-            for item in mains or []:
-                found = parse_gcloud_auth_code(item.get("json") or {})
-                if found:
-                    return found
+        for payload in iter_execution_jsons(detail):
+            found = parse_gcloud_auth_code(payload)
+            if found:
+                return found
+    return ""
+
+
+def hq_confirmation_auth_code(token: str) -> str:
+    """Read a pasted Google verification code from the HQ Drive task. Never log it."""
+    if not token:
+        return ""
+    req = urllib.request.Request(
+        f"https://api.notion.com/v1/comments?block_id={DRIVE_CONFIRM_PAGE}",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Notion-Version": "2022-06-28",
+        },
+        method="GET",
+    )
+    try:
+        comments = n8n_get_json(req, timeout=30)
+    except (TimeoutError, urllib.error.URLError, OSError, urllib.error.HTTPError):
+        return ""
+    for row in comments.get("results") or []:
+        rich = row.get("rich_text") or []
+        text = "".join(span.get("plain_text") or "" for span in rich)
+        found = extract_gcloud_code_from_text(text)
+        if found:
+            return found
     return ""
 
 
@@ -293,20 +337,24 @@ def wait_for_token(seconds: int = 30) -> str:
     return access_token()
 
 
-def try_once(notes: str, api_key: str, seen: set[str]) -> int:
+def try_once(notes: str, api_key: str, seen: set[str], notion_token: str = "") -> int:
     token = access_token()
-    if not token and api_key:
-        code = n8n_latest_auth_code(api_key, seen)
+    if not token:
+        code = ""
+        if api_key:
+            code = n8n_latest_auth_code(api_key, seen)
+        if not code:
+            code = hq_confirmation_auth_code(notion_token)
         if code and submit_code_to_tmux(code):
             token = wait_for_token(30)
     return run(token, notes)
 
 
-def watch(notes: str, api_key: str, interval: int) -> int:
+def watch(notes: str, api_key: str, interval: int, notion_token: str = "") -> int:
     seen: set[str] = set()
     while True:
         try:
-            rc = try_once(notes, api_key, seen)
+            rc = try_once(notes, api_key, seen, notion_token)
         except (TimeoutError, urllib.error.URLError, OSError) as err:
             print(f"watch iteration failed: {type(err).__name__}")
             rc = 2
@@ -335,9 +383,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     env = load_dotenv()
     api_key = env.get("N8N_API_KEY") or os.environ.get("N8N_API_KEY") or ""
+    notion_token = env.get("NOTION_API_KEY") or os.environ.get("NOTION_API_KEY") or ""
     if args.watch:
-        return watch(notes, api_key, args.interval)
-    return try_once(notes, api_key, set())
+        return watch(notes, api_key, args.interval, notion_token)
+    return try_once(notes, api_key, set(), notion_token)
 
 
 if __name__ == "__main__":

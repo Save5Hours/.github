@@ -37,6 +37,7 @@ jobs:
           node --check scripts/n8n-provision.mjs
           node --check scripts/apps-script-drive-webhook.js
           python3 scripts/test_colab_notebook.py
+          python3 scripts/test_apps_script.py
           git diff --exit-code n8n/meeting-notes-to-tasks.json
       - name: Transform unit tests (paella → three assignees)
         working-directory: automations/meeting-notes-to-tasks

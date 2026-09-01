@@ -154,7 +154,7 @@ The workflow calls `https://openrouter.ai/api/v1/chat/completions` with model **
 
 ### D. Meeting notes webhook secret
 
-Used by curl dry-runs. The live Apps Script path is **`/webhook/meeting-notes-drive`** (Google userinfo email on the Save 5 Hours allowlist — no Header Auth, no n8n login).
+Used by curl dry-runs. The live Drive path is **`/webhook/public-drive-doc`** (`fileId`+`text`, no Google userinfo). **`/webhook/meeting-notes-drive`** is the fallback (Google userinfo email on the Save 5 Hours allowlist — no Header Auth, no n8n login).
 
 1. n8n → **Credentials → Header Auth**
    - Name: **`Meeting notes webhook secret`**
@@ -164,7 +164,7 @@ Used by curl dry-runs. The live Apps Script path is **`/webhook/meeting-notes-dr
 
 Production URLs after publish:
 
-- Apps Script (default): `https://YOUR-N8N-HOST/webhook/meeting-notes-drive`
+- Apps Script (default): `https://YOUR-N8N-HOST/webhook/public-drive-doc` first (`fileId`+`text`); fallback `https://YOUR-N8N-HOST/webhook/meeting-notes-drive`
 - Public Doc link, bookmarklet, or pasted notes: `https://YOUR-N8N-HOST/webhook/public-drive-doc` with `{ "url": "https://docs.google.com/document/d/FILE_ID/edit" }` (Anyone with the link) **or** `{ "url", "text" }` / form fields `url` + `text` or `fileId` + `text` (private Docs). Missing URL returns **HTTP 400** HTML (not a blank 200).
 - HQ confirmation task: paste that same Doc URL into **Drive URL** (or the file id into **Drive file ID**), or into a comment / new paragraph. n8n polls every minute and also scans **any** HQ Task whose Drive URL / Drive file ID is filled. If the comment or paragraph also has the notes text (~80+ characters besides the URL), n8n uses that text (private Docs work). URL-only still needs Anyone with the link, Drive setup, or Apps Script.
 - Dry-run / Header Auth: `https://YOUR-N8N-HOST/webhook/meeting-notes`
@@ -224,7 +224,7 @@ n8n’s Drive Trigger only sees **direct children** of the watched folder. If Ge
 
 - Use the [Drive setup](https://n8n-production-192e.up.railway.app/webhook/drive-setup) form or Colab Run-all (one-shot verify; private files work), or
 - Create a shared folder `Gemini meeting notes` and save/shortcut docs there, or
-- Deploy `scripts/apps-script-drive-webhook.js` bound to the Workspace account. Copy it from [n8n Drive setup](https://n8n-production-192e.up.railway.app/webhook/drive-setup) (no n8n login). Run **`verifyDrivePath` once** — it creates a real Google Doc, POSTs `{ fileId, text, googleAccessToken }` to `/webhook/meeting-notes-drive`, and installs the 1-minute trigger. Google account must be `@save5hours.ch` or a known organizer Gmail.
+- Deploy `scripts/apps-script-drive-webhook.js` bound to the Workspace account. Copy it from [n8n Drive setup](https://n8n-production-192e.up.railway.app/webhook/drive-setup) (no n8n login). Run **`verifyDrivePath` once** — it creates a real Google Doc, POSTs `{ fileId, text }` to `/webhook/public-drive-doc` (retries on boot 404), and installs the 1-minute trigger. Google account must be `@save5hours.ch` or a known organizer Gmail.
 
 ## Rollback
 

@@ -13,7 +13,8 @@
  * Setup (Workspace admin / Meet organizer) — no n8n login:
  * 1. https://script.google.com → New project → paste this file
  * 2. Run **verifyDrivePath** once (creates a real Google Doc, POSTs
- *    {fileId,text,googleAccessToken}, installs the 1-minute trigger).
+ *    {fileId,text} to /webhook/public-drive-doc first — no n8n userinfo —
+ *    then /webhook/meeting-notes-drive if that fails, installs the trigger).
  *    Log: FOLDER_URL / FILE_ID → HQ Drive task.
  * Optional Script properties: FOLDER_ID, FOLDER_NAME, WEBHOOK_URL.
  * Optional WEBHOOK_SECRET_PASTE / WEBHOOK_SECRET only if you point WEBHOOK_URL
@@ -23,6 +24,8 @@
  * The n8n workflow must be Active.
  */
 var MIN_NOTE_CHARS = 80;
+var PUBLIC_WEBHOOK =
+  "https://n8n-production-192e.up.railway.app/webhook/public-drive-doc";
 var DEFAULT_WEBHOOK =
   "https://n8n-production-192e.up.railway.app/webhook/meeting-notes-drive";
 var DEFAULT_FOLDER_NAME = "Meet Recordings";
@@ -75,6 +78,11 @@ function verifyDrivePath() {
 
   const file = DriveApp.getFileById(doc.getId());
   file.moveTo(folder);
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (err) {
+    Logger.log("share skipped " + err);
+  }
 
   const text = DocumentApp.openById(file.getId()).getBody().getText();
   const code = postNote_(webhookUrl, secret, file, text);
@@ -129,7 +137,46 @@ function checkNewMeetingNotes() {
   props.setProperty("lastChecked", nowIso);
 }
 
+function postWithRetry_(url, headers, payload) {
+  var attempts = 0;
+  var code = 0;
+  var body = "";
+  while (attempts < 6) {
+    attempts++;
+    const response = UrlFetchApp.fetch(url, {
+      method: "post",
+      contentType: "application/json",
+      headers: headers,
+      payload: payload,
+      muteHttpExceptions: true,
+    });
+    code = response.getResponseCode();
+    body = String(response.getContentText() || "");
+    if (code >= 200 && code < 300) return code;
+    const retryable =
+      code === 404 ||
+      code === 502 ||
+      code === 503 ||
+      /not registered/i.test(body);
+    if (!retryable || attempts >= 6) return code;
+    Utilities.sleep(10000);
+  }
+  return code;
+}
+
 function postNote_(webhookUrl, secret, file, text) {
+  const publicPayload = JSON.stringify({
+    fileId: file.getId(),
+    url: file.getUrl(),
+    name: file.getName(),
+    mimeType: file.getMimeType(),
+    webViewLink: file.getUrl(),
+    text: text,
+  });
+  // Prefer public-drive-doc: fileId+text goes to OpenRouter without Google userinfo.
+  const publicCode = postWithRetry_(PUBLIC_WEBHOOK, {}, publicPayload);
+  if (publicCode >= 200 && publicCode < 300) return publicCode;
+
   const token = ScriptApp.getOAuthToken();
   const headers = { Authorization: "Bearer " + token };
   const pasted = String(secret || "").trim();
@@ -142,31 +189,7 @@ function postNote_(webhookUrl, secret, file, text) {
     text: text,
     googleAccessToken: token,
   });
-  // n8n may return 404 "webhook is not registered" for a few seconds after a
-  // Railway restart (CLI activate used to target the template id, not live).
-  var attempts = 0;
-  var code = 0;
-  while (attempts < 6) {
-    attempts++;
-    const response = UrlFetchApp.fetch(webhookUrl, {
-      method: "post",
-      contentType: "application/json",
-      headers: headers,
-      payload: payload,
-      muteHttpExceptions: true,
-    });
-    code = response.getResponseCode();
-    const body = String(response.getContentText() || "");
-    if (code >= 200 && code < 300) return code;
-    const retryable =
-      code === 404 ||
-      code === 502 ||
-      code === 503 ||
-      /not registered/i.test(body);
-    if (!retryable || attempts >= 6) return code;
-    Utilities.sleep(10000);
-  }
-  return code;
+  return postWithRetry_(webhookUrl, headers, payload);
 }
 
 function ensureFolder_(props) {

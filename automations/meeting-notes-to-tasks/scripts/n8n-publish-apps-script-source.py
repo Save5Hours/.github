@@ -116,7 +116,7 @@ def setup_html(source: str) -> str:
     <li>Run <strong>verifyDrivePath</strong>. Authorize Drive, Docs, and email if Google asks.</li>
     <li>Paste <code>FOLDER_URL</code> / <code>FILE_ID</code> from the execution log into <a href="https://app.notion.com/p/3cd0b26fcc4e819bb9ead19d74fb64a6" target="_blank" rel="noopener">Confirm the Drive folder</a>.</li>
   </ol>
-  <p class="warn">Do not re-POST the paella fixture. The script POSTs to <code>/webhook/meeting-notes-drive</code> with a Google access token (not the n8n Header Auth secret).</p>
+  <p class="warn">Do not re-POST the paella fixture. The script POSTs <code>fileId</code>+notes to <code>/webhook/public-drive-doc</code> first (no n8n userinfo). It only uses <code>/webhook/meeting-notes-drive</code> if that fails. You do not need <code>WEBHOOK_SECRET</code>.</p>
   <textarea class="src" id="src" readonly>""" + escaped + """</textarea>
   <p><a href="/webhook/apps-script-source">plain-text source</a></p>
   <script>
@@ -271,6 +271,9 @@ def main() -> int:
         return 1
     if "meeting-notes-drive" not in source or "ScriptApp.getOAuthToken" not in source:
         print("blocked: Apps Script source missing Drive Google-token path")
+        return 1
+    if "public-drive-doc" not in source or "PUBLIC_WEBHOOK" not in source:
+        print("blocked: Apps Script source must POST public-drive-doc first")
         return 1
     if "Utilities.sleep" not in source or "not registered" not in source:
         print("blocked: Apps Script source missing webhook retry")

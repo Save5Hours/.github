@@ -18,6 +18,9 @@ def main() -> None:
     assert "public-drive-doc" in src
     assert "MediaInMemoryUpload" in src
     assert "googleAccessToken" in src
+    assert "post_with_retry" in src
+    assert "if public.status_code >= 300 and token" in src
+    assert "drive_ok" in src
     assert "Antoine will publish the Drive webhook runbook" in src
     assert "WEBHOOK_SECRET" not in src
     assert "You do **not** need an n8n login or `WEBHOOK_SECRET`" in md

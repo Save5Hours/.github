@@ -255,10 +255,12 @@ function existingWorkflow(database) {
   if (!database) return null;
   try {
     const byName = database.prepare(
-      'SELECT id FROM workflow_entity WHERE name = ? ORDER BY active DESC LIMIT 1',
+      'SELECT id, active FROM workflow_entity WHERE name = ? ORDER BY active DESC LIMIT 1',
     ).get(WF_NAME);
     if (byName?.id) return byName;
-    return database.prepare('SELECT id FROM workflow_entity WHERE id = ? LIMIT 1').get(WF_ID);
+    return database.prepare(
+      'SELECT id, active FROM workflow_entity WHERE id = ? LIMIT 1',
+    ).get(WF_ID);
   } catch {
     return null;
   }
@@ -366,6 +368,12 @@ const canActivate = envPresent('OPENROUTER_API_KEY') && envPresent('NOTION_API_K
   && process.env.N8N_ACTIVATE_WORKFLOW === 'true';
 if (canActivate) {
   const activateId = live?.id || WF_ID;
-  console.log('save5hours: activating workflow', activateId);
-  run(['n8n', 'update:workflow', '--id', activateId, '--active', 'true']);
+  // CLI `update:workflow --active true` hits SQLITE FK 787 when the row is
+  // already active. n8n then activates active=1 workflows on process start.
+  if (Number(live?.active) === 1) {
+    console.log('save5hours: workflow already active', activateId);
+  } else {
+    console.log('save5hours: activating workflow', activateId);
+    run(['n8n', 'update:workflow', '--id', activateId, '--active', 'true']);
+  }
 }

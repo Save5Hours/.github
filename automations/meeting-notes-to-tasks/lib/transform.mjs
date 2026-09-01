@@ -142,12 +142,36 @@ export function notionBlockText(blocks) {
   return parts.filter(Boolean).join('\n');
 }
 
+/** Notion comments list (GET /v1/comments?block_id=) → concatenated text. */
+export function notionCommentsText(comments) {
+  const results = (comments && comments.results) || (Array.isArray(comments) ? comments : []);
+  const parts = [];
+  for (const row of results) {
+    if (!row || typeof row !== 'object') continue;
+    const spans = row.rich_text || [];
+    if (!Array.isArray(spans)) continue;
+    for (const span of spans) {
+      parts.push(span.plain_text || '');
+      if (span.href) parts.push(span.href);
+    }
+  }
+  return parts.filter(Boolean).join('\n');
+}
+
 /** Notion HQ confirmation page → Drive Doc payload (no inline-* ids). */
 export function parseHqDriveConfirmation(page, extra) {
   const props = page && page.properties && typeof page.properties === 'object'
     ? page.properties
     : {};
-  const extraText = typeof extra === 'string' ? extra : notionBlockText(extra);
+  let extraText = '';
+  if (typeof extra === 'string') {
+    extraText = extra;
+  } else if (extra && typeof extra === 'object') {
+    extraText = [
+      notionBlockText(extra.blocks || extra),
+      notionCommentsText(extra.comments || extra),
+    ].filter(Boolean).join('\n');
+  }
   return extractPublicDrivePayload({
     url: `${notionPlain(props['Drive URL'])}\n${extraText}`,
     fileId: notionPlain(props['Drive file ID']),

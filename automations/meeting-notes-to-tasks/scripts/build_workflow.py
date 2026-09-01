@@ -162,7 +162,12 @@ return [{ json: { ...meta, text, inlineText: text.trim() } }];
 
 PARSE_HQ_CODE = TRANSFORM_JS + "\n\n" + r"""
 const page = $('Fetch HQ Drive confirmation').first().json || {};
-const extra = $input.first().json || {};
+const blocks = $('Fetch HQ Drive blocks').first().json || {};
+const comments = $input.first().json || {};
+const extra = {
+  blocks,
+  comments,
+};
 const parsed = parseHqDriveConfirmation(page, extra);
 if (!parsed.fileId) {
   return [];
@@ -198,7 +203,7 @@ nodes = [
         "typeVersion": 1,
         "position": [-420, 140],
         "parameters": {
-            "content": "## Meeting notes → HQ Tasks\n\nGemini often creates an empty Doc and fills it after the meeting. This workflow watches **file created** and **file updated**, skips notes shorter than 80 characters, then sends text to OpenRouter (`openrouter/free`) and writes HQ Tasks.\n\n**Host n8n 1.123.x** (this repo Dockerfile). n8n 2.x needs extra task runners for Code nodes.\n\n`/webhook/meeting-notes` needs Header Auth (dry-run). `/webhook/meeting-notes-drive` is Apps Script (Google userinfo allowlist). `/webhook/public-drive-doc` accepts a public Doc URL, or `fileId`+`text` from the Drive-setup bookmarklet (private Docs; no sharing change).\n\nEvery minute, **HQ Drive URL poll** reads Drive URL / Drive file ID on the HQ confirmation task. A public Doc there is exported and written as HQ Tasks (no Google OAuth). Private Docs still need Drive setup paste or Apps Script.",
+            "content": "## Meeting notes → HQ Tasks\n\nGemini often creates an empty Doc and fills it after the meeting. This workflow watches **file created** and **file updated**, skips notes shorter than 80 characters, then sends text to OpenRouter (`openrouter/free`) and writes HQ Tasks.\n\n**Host n8n 1.123.x** (this repo Dockerfile). n8n 2.x needs extra task runners for Code nodes.\n\n`/webhook/meeting-notes` needs Header Auth (dry-run). `/webhook/meeting-notes-drive` is Apps Script (Google userinfo allowlist). `/webhook/public-drive-doc` accepts a public Doc URL, or `fileId`+`text` from the Drive-setup bookmarklet (private Docs; no sharing change).\n\nEvery minute, **HQ Drive URL poll** reads Drive URL / Drive file ID on the HQ confirmation task, plus the page body and comments. A public Doc there is exported and written as HQ Tasks (no Google OAuth). Private Docs still need Drive setup paste or Apps Script.",
             "height": 460,
             "width": 340,
             "color": 7,
@@ -581,6 +586,30 @@ nodes = [
         "parameters": {
             "method": "GET",
             "url": f"https://api.notion.com/v1/blocks/{DRIVE_CONFIRM_PAGE}/children?page_size=100",
+            "authentication": "predefinedCredentialType",
+            "nodeCredentialType": "notionApi",
+            "sendHeaders": True,
+            "headerParameters": {
+                "parameters": [
+                    {"name": "Notion-Version", "value": "2022-06-28"},
+                ]
+            },
+            "options": {"timeout": 30000},
+        },
+        "retryOnFail": True,
+        "maxTries": 2,
+        "waitBetweenTries": 2000,
+        "credentials": NOTION_CREDS,
+    },
+    {
+        "id": "fetch-hq-drive-comments",
+        "name": "Fetch HQ Drive comments",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [460, 1480],
+        "parameters": {
+            "method": "GET",
+            "url": f"https://api.notion.com/v1/comments?block_id={DRIVE_CONFIRM_PAGE}",
             "authentication": "predefinedCredentialType",
             "nodeCredentialType": "notionApi",
             "sendHeaders": True,
@@ -996,7 +1025,8 @@ connections = {
     "Merge public Doc": conn("Normalize file"),
     "HQ Drive URL poll": conn("Fetch HQ Drive confirmation"),
     "Fetch HQ Drive confirmation": conn("Fetch HQ Drive blocks"),
-    "Fetch HQ Drive blocks": conn("Parse HQ Drive confirmation"),
+    "Fetch HQ Drive blocks": conn("Fetch HQ Drive comments"),
+    "Fetch HQ Drive comments": conn("Parse HQ Drive confirmation"),
     "Parse HQ Drive confirmation": conn("Find HQ Drive duplicates"),
     "Find HQ Drive duplicates": conn("Skip imported HQ Drive"),
     "Skip imported HQ Drive": conn("Has Doc text already"),

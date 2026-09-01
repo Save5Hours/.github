@@ -152,6 +152,25 @@ test('parseHqDriveConfirmation reads Notion Drive URL and file ID properties', (
     },
   );
   assert.equal(fromBody.fileId, '1DocVerifyFileIdNotInline99');
+
+  const fromComments = parseHqDriveConfirmation(
+    { properties: {} },
+    {
+      comments: {
+        results: [
+          {
+            rich_text: [
+              {
+                plain_text: 'https://docs.google.com/document/d/1DocVerifyFileIdNotInline99/edit',
+                href: 'https://docs.google.com/document/d/1DocVerifyFileIdNotInline99/edit',
+              },
+            ],
+          },
+        ],
+      },
+    },
+  );
+  assert.equal(fromComments.fileId, '1DocVerifyFileIdNotInline99');
 });
 
 test('driveCallerAllowed is Save 5 Hours plus known organizer Gmail', () => {

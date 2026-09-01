@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import urllib.parse
 from pathlib import Path
 from unittest import mock
 
@@ -211,6 +212,128 @@ def main() -> None:
     with mock.patch.object(mod.urllib.request, "urlopen", fake_hq):
         assert mod.hq_confirmation_auth_code("fake-notion") == "4/0AHqCommentGcloudXX"
 
+    url = mod.build_drive_auth_url("cid.apps.googleusercontent.com", "chalXX", "stateXX")
+    assert url.startswith(mod.OAUTH_AUTH_URL)
+    assert "cloud-platform" not in url
+    assert "appengine.admin" not in url
+    assert urllib.parse.unquote(url).count("googleapis.com/auth/drive") == 1
+    assert "code_challenge=chalXX" in url
+    assert "code_challenge_method=S256" in url
+    assert "login_hint=" in url
+    assert "cloud-platform" not in " ".join(mod.DRIVE_OAUTH_SCOPES)
+
+    captured_token: dict = {}
+
+    def fake_token_exchange(req, timeout=30):
+        captured_token["url"] = req.full_url
+        captured_token["body"] = req.data.decode("utf-8")
+        return FakeResp({"access_token": "drive-access-token", "refresh_token": "drive-refresh"})
+
+    with mock.patch.object(mod, "cloud_sdk_oauth_client", return_value=("cid", "csecret")):
+        with mock.patch.object(mod, "write_adc") as adc:
+            with mock.patch.object(mod.urllib.request, "urlopen", fake_token_exchange):
+                with mock.patch("sys.stdout", io.StringIO()) as out:
+                    token = mod.exchange_drive_code(
+                        "4/0AFakeGcloudCodeXX",
+                        {"verifier": "pkce-verifier", "client_id": "cid"},
+                    )
+                    printed = out.getvalue()
+    assert token == "drive-access-token"
+    assert "4/0AFakeGcloudCodeXX" not in printed
+    assert "csecret" not in printed
+    assert "pkce-verifier" not in printed
+    assert captured_token["url"] == mod.OAUTH_TOKEN_URL
+    assert "grant_type=authorization_code" in captured_token["body"]
+    assert "code_verifier=pkce-verifier" in captured_token["body"]
+    adc.assert_called_once()
+
+    with mock.patch.object(mod, "access_token", return_value=""):
+        with mock.patch.object(mod, "n8n_latest_auth_code", return_value="4/0AFakeGcloudCodeXX"):
+            with mock.patch.object(mod, "exchange_drive_code", return_value="drive-token") as ex:
+                with mock.patch.object(mod, "submit_code_to_tmux") as tmux:
+                    with mock.patch.object(mod, "run", return_value=0) as run:
+                        assert mod.try_once("notes", "key", set()) == 0
+                        ex.assert_called_once()
+                        tmux.assert_not_called()
+                        run.assert_called_once_with("drive-token", "notes")
+
+    meeting_urls: list[str] = []
+
+    def fake_meeting(req, timeout=30):
+        meeting_urls.append(req.full_url)
+        if "workflowId=RU7qrw4zZPhZh6Kw" in req.full_url:
+            return FakeResp(
+                {
+                    "data": [
+                        {
+                            "id": "600",
+                            "mode": "webhook",
+                            "data": {
+                                "resultData": {
+                                    "runData": {
+                                        "Gcloud auth URL": [
+                                            {
+                                                "data": {
+                                                    "main": [
+                                                        [
+                                                            {
+                                                                "json": {
+                                                                    "query": {"code": "4/0AShouldIgnoreGET"}
+                                                                }
+                                                            }
+                                                        ]
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            },
+                        }
+                    ]
+                }
+            )
+        if "workflowId=9JlE8lA1TQdlxw0S" in req.full_url:
+            return FakeResp(
+                {
+                    "data": [
+                        {
+                            "id": "601",
+                            "mode": "webhook",
+                            "data": {
+                                "resultData": {
+                                    "runData": {
+                                        "Parse Drive URL": [
+                                            {
+                                                "data": {
+                                                    "main": [
+                                                        [
+                                                            {
+                                                                "json": {
+                                                                    "body": {
+                                                                        "url": "4/0AFromPublicDocXX"
+                                                                    }
+                                                                }
+                                                            }
+                                                        ]
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            },
+                        }
+                    ]
+                }
+            )
+        raise AssertionError(req.full_url)
+
+    with mock.patch.object(mod.urllib.request, "urlopen", fake_meeting):
+        found_public = mod.n8n_latest_auth_code("fake-key", set())
+    assert found_public == "4/0AFromPublicDocXX"
+    assert any("workflowId=9JlE8lA1TQdlxw0S" in url for url in meeting_urls)
+
     assert mod.PKCE_REFRESH_AFTER == 25 * 60
     old_pkce = {"aaaa"}
     stale = "code_challenge=aaaa\nOnce finished, enter the verification code"
@@ -228,20 +351,30 @@ def main() -> None:
         "3-tRYFPjpI8rNIPfuT0yg9Pr_WmhOeYeU_cXUlU9XBs"
     ]
     assert mod.pane_has_new_pkce(wrapped_pkce, {"aaaa"}) is True
-    with mock.patch.object(mod, "gcloud_login_elapsed_seconds", return_value=100.0):
-        with mock.patch.object(mod, "restart_gcloud_login") as restart:
-            assert mod.maybe_refresh_gcloud_pkce() is False
-            restart.assert_not_called()
-    with mock.patch.object(mod, "gcloud_login_elapsed_seconds", return_value=10 * 60):
-        with mock.patch.object(mod, "restart_gcloud_login") as restart:
-            assert mod.maybe_refresh_gcloud_pkce() is False
-            restart.assert_not_called()
-    with mock.patch.object(mod, "gcloud_login_elapsed_seconds", return_value=26 * 60):
-        with mock.patch.object(mod, "restart_gcloud_login", return_value=True) as restart:
-            with mock.patch.object(mod, "publish_drive_setup", return_value=True) as pub:
-                assert mod.maybe_refresh_gcloud_pkce() is True
-                restart.assert_called_once()
-                pub.assert_called_once()
+    with mock.patch.object(mod, "load_drive_oauth_session", return_value={}):
+        with mock.patch.object(mod, "gcloud_login_elapsed_seconds", return_value=100.0):
+            with mock.patch.object(mod, "restart_gcloud_login") as restart:
+                assert mod.maybe_refresh_gcloud_pkce() is False
+                restart.assert_not_called()
+        with mock.patch.object(mod, "gcloud_login_elapsed_seconds", return_value=10 * 60):
+            with mock.patch.object(mod, "restart_gcloud_login") as restart:
+                assert mod.maybe_refresh_gcloud_pkce() is False
+                restart.assert_not_called()
+        with mock.patch.object(mod, "gcloud_login_elapsed_seconds", return_value=26 * 60):
+            with mock.patch.object(mod, "restart_gcloud_login", return_value=True) as restart:
+                with mock.patch.object(mod, "publish_drive_setup", return_value=True) as pub:
+                    assert mod.maybe_refresh_gcloud_pkce() is True
+                    restart.assert_called_once()
+                    pub.assert_called_once()
+    with mock.patch.object(
+        mod,
+        "load_drive_oauth_session",
+        return_value={"url": "https://accounts.google.com/o/oauth2/auth?x=1", "verifier": "v"},
+    ):
+        with mock.patch.object(mod, "gcloud_login_elapsed_seconds", return_value=26 * 60):
+            with mock.patch.object(mod, "restart_gcloud_login") as restart:
+                assert mod.maybe_refresh_gcloud_pkce() is False
+                restart.assert_not_called()
 
     args = mod.parse_args(["--watch", "--interval", "12"])
     assert args.watch is True

@@ -64,6 +64,9 @@ def main() -> None:
     assert "novalidate" in html
     assert 'id="copyauth"' in html
     assert "open on a phone already signed into Google" in html
+    assert "not Cloud CLI" in html
+    assert "Cloud Platform admin" in html
+    assert "does not rotate every few minutes" in html
     assert 'id="setupqr"' in html
     assert "Scan on a phone signed into Google" in html
     assert "<svg" in html

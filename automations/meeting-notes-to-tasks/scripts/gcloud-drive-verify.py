@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
-"""Create a real Google Doc with gcloud ADC and POST it to n8n.
+"""Create a real Google Doc with gcloud ADC or Drive-only OAuth and POST it to n8n.
 
-Uses `gcloud auth print-access-token` (or ADC) after `gcloud auth login
---enable-gdrive-access`. POSTs {fileId, text} to /webhook/public-drive-doc
-(no WEBHOOK_SECRET, not the paella fixture, not /webhook/meeting-notes).
-Exit 2 if gcloud is not logged in. Does not print tokens or verification codes.
+Uses a Drive-only Cloud SDK PKCE session (no Cloud Platform / Cloud CLI
+scopes) when present, else `gcloud auth print-access-token` after
+`gcloud auth login --enable-gdrive-access`. POSTs {fileId, text} to
+/webhook/public-drive-doc (no WEBHOOK_SECRET, not the paella fixture, not
+/webhook/meeting-notes). Exit 2 if Google is not logged in. Does not print
+tokens or verification codes.
 
-`--watch` polls the Drive-setup workflow for a pasted Google verification code
-so HQ empty-polls cannot bury that POST in the global executions list.
+`--watch` polls Drive-setup for a pasted Google verification code so HQ
+empty-polls cannot bury that POST in the global executions list.
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -35,10 +40,21 @@ DRIVE_UPLOAD = (
 TITLE = "Gemini notes — Drive path verification (n8n)"
 N8N_BASE = "https://n8n-production-192e.up.railway.app"
 DRIVE_SETUP_WF = "RU7qrw4zZPhZh6Kw"
+MEETING_NOTES_WF = "9JlE8lA1TQdlxw0S"
 AUTH_CODE_NODE = "Gcloud auth code"
 GCLOUD_CANDIDATES = [
     Path.home() / "google-cloud-sdk-dl" / "google-cloud-sdk" / "bin" / "gcloud",
     Path("/usr/bin/gcloud"),
+]
+SDK_CONFIG_CANDIDATES = [
+    Path.home()
+    / "google-cloud-sdk-dl"
+    / "google-cloud-sdk"
+    / "lib"
+    / "googlecloudsdk"
+    / "core"
+    / "config.py",
+    Path("/usr/lib/google-cloud-sdk/lib/googlecloudsdk/core/config.py"),
 ]
 TMUX_SESSION = "gcloud-drive-login"
 TMUX_CONF = "/exec-daemon/tmux.portal.conf"
@@ -46,8 +62,22 @@ DRIVE_CONFIRM_PAGE = "3cd0b26fcc4e819bb9ead19d74fb64a6"
 GCLOUD_ACCOUNT = "antoine@save5hours.ch"
 # Restarting gcloud mints a new code_challenge and invalidates a consent
 # screen already open on a phone. Keep the waiting login long enough for that.
+# Drive-only PKCE (no Cloud CLI scopes) does not rotate.
 PKCE_REFRESH_AFTER = 25 * 60
 PUBLISHER = ROOT / "scripts" / "n8n-publish-apps-script-source.py"
+DRIVE_OAUTH_SESSION = (
+    Path.home() / ".config" / "gcloud" / "drive-verify-oauth.json"
+)
+ADC_PATH = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
+OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
+OAUTH_AUTH_URL = "https://accounts.google.com/o/oauth2/auth"
+OAUTH_REDIRECT = "https://sdk.cloud.google.com/authcode.html"
+# Same Drive scope gcloud --enable-gdrive-access uses, without Cloud Platform.
+DRIVE_OAUTH_SCOPES = (
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/drive",
+)
 # Google Cloud SDK authcode.html values look like 4/0A…
 GCLOUD_CODE_RE = re.compile(r"4/[0-9A-Za-z_\-]{10,}")
 
@@ -72,6 +102,161 @@ def load_dotenv() -> dict[str, str]:
             key, value = line.split("=", 1)
             out[key.strip()] = value.strip().strip('"').strip("'")
     return out
+
+
+def cloud_sdk_oauth_client() -> tuple[str, str]:
+    """Return the public Cloud SDK installed-app client. Never log the secret."""
+    for path in SDK_CONFIG_CANDIDATES:
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        client = re.search(r"CLOUDSDK_CLIENT_ID = '([^']+)'", text)
+        secret = re.search(r"CLOUDSDK_CLIENT_NOTSOSECRET = '([^']+)'", text)
+        if client and secret:
+            return client.group(1), secret.group(1)
+    return "", ""
+
+
+def pkce_pair() -> tuple[str, str]:
+    verifier = secrets.token_urlsafe(64)
+    challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
+        .rstrip(b"=")
+        .decode("ascii")
+    )
+    return verifier, challenge
+
+
+def build_drive_auth_url(
+    client_id: str, challenge: str, state: str, login_hint: str = GCLOUD_ACCOUNT
+) -> str:
+    query = {
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": OAUTH_REDIRECT,
+        "scope": " ".join(DRIVE_OAUTH_SCOPES),
+        "state": state,
+        "prompt": "consent",
+        "access_type": "offline",
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+        "login_hint": login_hint,
+    }
+    return OAUTH_AUTH_URL + "?" + urllib.parse.urlencode(query)
+
+
+def load_drive_oauth_session() -> dict:
+    path = DRIVE_OAUTH_SESSION
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    url = str(data.get("url") or "")
+    verifier = str(data.get("verifier") or "")
+    if not url.startswith(OAUTH_AUTH_URL) or not verifier:
+        return {}
+    if "cloud-platform" in url:
+        return {}
+    return data
+
+
+def save_drive_oauth_session(data: dict) -> None:
+    path = DRIVE_OAUTH_SESSION
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+    os.chmod(path, 0o600)
+
+
+def ensure_drive_oauth_session() -> dict:
+    """Stable Drive-only PKCE. Does not rotate; Cloud CLI login is a fallback."""
+    existing = load_drive_oauth_session()
+    if existing:
+        return existing
+    client_id, secret = cloud_sdk_oauth_client()
+    if not client_id or not secret:
+        print("blocked: Cloud SDK OAuth client missing")
+        return {}
+    verifier, challenge = pkce_pair()
+    state = secrets.token_urlsafe(24)
+    url = build_drive_auth_url(client_id, challenge, state)
+    data = {
+        "url": url,
+        "verifier": verifier,
+        "challenge": challenge,
+        "state": state,
+        "client_id": client_id,
+    }
+    save_drive_oauth_session(data)
+    print("created Drive-only Google authorize session")
+    return data
+
+
+def write_adc(refresh_token: str, client_id: str, client_secret: str) -> None:
+    if not refresh_token or not client_id or not client_secret:
+        return
+    ADC_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "account": GCLOUD_ACCOUNT,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "refresh_token": refresh_token,
+        "type": "authorized_user",
+        "universe_domain": "googleapis.com",
+    }
+    ADC_PATH.write_text(json.dumps(payload), encoding="utf-8")
+    os.chmod(ADC_PATH, 0o600)
+
+
+def exchange_drive_code(code: str, session: dict | None = None) -> str:
+    """Exchange a pasted Google code for a Drive access token. Never log it."""
+    compact = "".join(str(code or "").split())
+    if not compact:
+        return ""
+    session = session if session is not None else load_drive_oauth_session()
+    verifier = str((session or {}).get("verifier") or "")
+    client_id = str((session or {}).get("client_id") or "")
+    sdk_id, sdk_secret = cloud_sdk_oauth_client()
+    client_id = client_id or sdk_id
+    if not verifier or not client_id or not sdk_secret:
+        return ""
+    body = urllib.parse.urlencode(
+        {
+            "client_id": client_id,
+            "client_secret": sdk_secret,
+            "code": compact,
+            "code_verifier": verifier,
+            "grant_type": "authorization_code",
+            "redirect_uri": OAUTH_REDIRECT,
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        OAUTH_TOKEN_URL,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            parsed = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError:
+        print("blocked: Google Drive token exchange failed")
+        return ""
+    except (TimeoutError, urllib.error.URLError, OSError, json.JSONDecodeError):
+        print("blocked: Google Drive token exchange failed")
+        return ""
+    token = str(parsed.get("access_token") or "").strip()
+    refresh = str(parsed.get("refresh_token") or "").strip()
+    if not token or " " in token or "\n" in token:
+        print("blocked: Google Drive token exchange failed")
+        return ""
+    if refresh:
+        write_adc(refresh, client_id, sdk_secret)
+    print("exchanged Google Drive token")
+    return token
 
 
 def parse_gcloud_auth_code(src) -> str:
@@ -341,7 +526,13 @@ def publish_drive_setup() -> bool:
 
 
 def maybe_refresh_gcloud_pkce(after: int = PKCE_REFRESH_AFTER) -> bool:
-    """Restart waiting gcloud login and republish Authorize when PKCE is stale."""
+    """Restart waiting gcloud login and republish Authorize when PKCE is stale.
+
+    Drive-only PKCE does not rotate — restarting gcloud would mint a different
+    challenge than the Authorize link already on Drive setup.
+    """
+    if load_drive_oauth_session():
+        return False
     elapsed = gcloud_login_elapsed_seconds()
     if elapsed is not None and elapsed < after:
         return False
@@ -350,10 +541,10 @@ def maybe_refresh_gcloud_pkce(after: int = PKCE_REFRESH_AFTER) -> bool:
     return publish_drive_setup()
 
 
-def executions_list_url() -> str:
+def executions_list_url(workflow_id: str = DRIVE_SETUP_WF) -> str:
     query = urllib.parse.urlencode(
         {
-            "workflowId": DRIVE_SETUP_WF,
+            "workflowId": workflow_id,
             "limit": 50,
             "includeData": "true",
         }
@@ -369,9 +560,10 @@ def n8n_get_json(req: urllib.request.Request, timeout: int = 45) -> dict:
 def n8n_latest_auth_code(api_key: str, seen: set[str] | None = None) -> str:
     """Return a pasted Google verification code. Never log it.
 
-    Reads the Drive-setup workflow only. The meeting-notes HQ poll fires every
-    minute and would otherwise push this POST out of a global last-20 list.
-    Timeouts and n8n blips return empty so --watch can keep polling.
+    Reads Drive-setup `Gcloud auth code` POSTs first. GET authorize-link
+    executions are ignored. Then scans meeting-notes webhooks (a 4/ code
+    pasted in the Doc URL field without JS hits public-drive-doc). Timeouts
+    return empty so --watch can keep polling.
     """
     req = urllib.request.Request(
         executions_list_url(),
@@ -406,6 +598,47 @@ def n8n_latest_auth_code(api_key: str, seen: set[str] | None = None) -> str:
         if AUTH_CODE_NODE not in run_data:
             continue
         for payload in iter_execution_jsons(detail, AUTH_CODE_NODE):
+            found = parse_gcloud_auth_code(payload)
+            if found:
+                return found
+    return n8n_latest_auth_code_from_workflow(api_key, MEETING_NOTES_WF, seen)
+
+
+def n8n_latest_auth_code_from_workflow(
+    api_key: str, workflow_id: str, seen: set[str] | None = None
+) -> str:
+    req = urllib.request.Request(
+        executions_list_url(workflow_id),
+        headers={"X-N8N-API-KEY": api_key, "Accept": "application/json"},
+    )
+    try:
+        listed = n8n_get_json(req)
+    except (TimeoutError, urllib.error.URLError, OSError):
+        print("n8n executions list timed out")
+        return ""
+    for row in listed.get("data") or []:
+        if row.get("mode") != "webhook":
+            continue
+        eid = str(row.get("id") or "")
+        if not eid or (seen is not None and eid in seen):
+            continue
+        detail = row
+        run_data = ((detail.get("data") or {}).get("resultData") or {}).get("runData") or {}
+        if not run_data:
+            detail_req = urllib.request.Request(
+                f"{N8N_BASE}/api/v1/executions/{eid}?includeData=true",
+                headers={"X-N8N-API-KEY": api_key, "Accept": "application/json"},
+            )
+            try:
+                detail = n8n_get_json(detail_req)
+            except (TimeoutError, urllib.error.URLError, OSError):
+                print(f"n8n execution {eid} timed out")
+                continue
+            run_data = ((detail.get("data") or {}).get("resultData") or {}).get("runData") or {}
+        if seen is not None:
+            seen.add(eid)
+        node = AUTH_CODE_NODE if AUTH_CODE_NODE in run_data else ""
+        for payload in iter_execution_jsons(detail, node):
             found = parse_gcloud_auth_code(payload)
             if found:
                 return found
@@ -552,12 +785,17 @@ def try_once(notes: str, api_key: str, seen: set[str], notion_token: str = "") -
             code = n8n_latest_auth_code(api_key, seen)
         if not code:
             code = hq_confirmation_auth_code(notion_token)
-        if code and submit_code_to_tmux(code):
+        if code:
+            token = exchange_drive_code(code)
+        if not token and code and submit_code_to_tmux(code):
             token = wait_for_token(30)
     return run(token, notes)
 
 
 def watch(notes: str, api_key: str, interval: int, notion_token: str = "") -> int:
+    session = ensure_drive_oauth_session()
+    if session.get("url"):
+        publish_drive_setup()
     seen: set[str] = set()
     while True:
         try:

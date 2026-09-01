@@ -11,6 +11,7 @@ Does not touch the Meeting notes → HQ Tasks workflow.
 from __future__ import annotations
 
 import html
+import importlib.util
 import json
 import os
 import re
@@ -111,10 +112,29 @@ def extract_gcloud_auth_url(text: str) -> str:
     return matches[-1] if matches else ""
 
 
+def load_drive_verify():
+    path = ROOT / "scripts" / "gcloud-drive-verify.py"
+    spec = importlib.util.spec_from_file_location("gcloud_drive_verify", path)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def read_gcloud_auth_url() -> str:
     env_url = (os.environ.get("GCLOUD_AUTH_URL") or "").strip()
     if env_url.startswith("https://accounts.google.com/o/oauth2/auth"):
         return env_url
+    try:
+        session = load_drive_verify().ensure_drive_oauth_session()
+        session_url = str((session or {}).get("url") or "")
+        if session_url.startswith("https://accounts.google.com/o/oauth2/auth"):
+            if "cloud-platform" in session_url:
+                print("blocked: Drive authorize URL still requests Cloud CLI scopes")
+            else:
+                return session_url
+    except Exception:
+        pass
     conf = Path("/exec-daemon/tmux.portal.conf")
     cmd = ["tmux"]
     if conf.is_file():
@@ -150,8 +170,8 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
         "Authorize Google Drive</a> "
         '<button type="button" id="copyauth">Copy authorize link</button>'
         '<span class="ok" id="authok">copied — open on a phone already signed into Google</span>'
-        " (Google Cloud SDK: Drive plus Cloud CLI). "
-        "If this tab was already open, the link refreshes by itself. "
+        " (Google Drive only — not Cloud CLI / Cloud Platform admin). "
+        "The link stays valid; it does not rotate every few minutes. "
         "Then paste the verification code below. Prefer Option 1 if you can paste a Doc URL.</p>"
     )
     qr = setup_qr_markup()
@@ -584,6 +604,9 @@ def main() -> int:
         if "not docs.new" not in page:
             print("blocked: drive-setup form must reject docs.new without a file id")
             return 1
+        if "not Cloud CLI" not in page or "Cloud Platform admin" not in page:
+            print("blocked: drive-setup authorize link must not ask for Cloud CLI")
+            return 1
         if 'id="gcloudcode"' not in page or "gcloud-auth-code" not in page:
             print("blocked: drive-setup page missing gcloud verification-code form")
             return 1
@@ -622,7 +645,10 @@ def main() -> int:
             live_chal = re.search(r"code_challenge=([^&\s]+)", live_url)
             want_chal = re.search(r"code_challenge=([^&\s]+)", auth_url)
             if not live_chal or not want_chal or live_chal.group(1) != want_chal.group(1):
-                print("blocked: gcloud-auth-url PKCE does not match tmux")
+                print("blocked: gcloud-auth-url PKCE does not match Drive authorize session")
+                return 1
+            if "cloud-platform" in live_url:
+                print("blocked: live authorize URL still requests Cloud CLI scopes")
                 return 1
         if "Drive path verification" not in page:
             print("blocked: drive-setup form must prefill verification notes")

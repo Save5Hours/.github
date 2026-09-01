@@ -99,6 +99,10 @@ build_code = nodes["Build Notion page"]["parameters"]["jsCode"]
 if "$input.all()" not in build_code:
     raise SystemExit("Build Notion page must map every split task, not only $input.first()")
 
+overview = nodes["How this workflow runs"]["parameters"]["content"]
+if "1hM320L8wvgULoPY1vEvAoLdTynmnJMYxIKX7w6WSuPKVC3rKkvyz4okw" not in overview:
+    raise SystemExit("sticky note must document the live Apps Script project id")
+
 or_url = nodes["OpenRouter"]["parameters"]["url"]
 assert or_url == "https://openrouter.ai/api/v1/chat/completions"
 

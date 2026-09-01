@@ -21,7 +21,9 @@ Self-hosted n8n has **no** Google Sign-in button (that exists only on n8n Cloud)
 
 Google Apps Script uses the Google account you already have. No Client ID. No redirect URI.
 
-1. Open [script.google.com](https://script.google.com) signed in as the Meet organizer.
+**Live Apps Script (Drive watcher):** [project `1hM320L8wvgULoPY1vEvAoLdTynmnJMYxIKX7w6WSuPKVC3rKkvyz4okw`](https://script.google.com/home/projects/1hM320L8wvgULoPY1vEvAoLdTynmnJMYxIKX7w6WSuPKVC3rKkvyz4okw/edit)
+
+1. Open that project signed in as the Meet organizer (or [script.google.com](https://script.google.com) → New project).
 2. Paste [`apps-script-drive-webhook.js`](https://raw.githubusercontent.com/Save5Hours/.github/cursor/fix-drive-notion-automation-007c/automations/meeting-notes-to-tasks/scripts/apps-script-drive-webhook.js) (replace the old file).
 3. Run **verifyDrivePath** once (Allow Drive + Docs).
 4. Run **backfillAllMeetingNotes** once. That POSTs every existing Google Doc in `Meet Recordings` (subfolders included). If the log says `remaining>0`, run it again.

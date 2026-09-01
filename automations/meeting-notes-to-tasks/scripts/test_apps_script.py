@@ -20,6 +20,7 @@ def main() -> None:
     assert "WEBHOOK_SECRET_PASTE" in src
     assert 'WEBHOOK_SECRET_PASTE = ""' in src
     assert "/webhook/meeting-notes-drive" in src
+    assert "1hM320L8wvgULoPY1vEvAoLdTynmnJMYxIKX7w6WSuPKVC3rKkvyz4okw" in src
     assert "googleAccessToken" in src
     assert "ScriptApp.getOAuthToken" in src
     assert "public-drive-doc" not in src

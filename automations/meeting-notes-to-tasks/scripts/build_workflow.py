@@ -155,8 +155,8 @@ nodes = [
         "typeVersion": 1,
         "position": [-420, 140],
         "parameters": {
-            "content": "## Meeting notes → HQ Tasks\n\nApps Script is the Drive sync (no Google Cloud Console).\n\n1. Run **backfillAllMeetingNotes** once for existing Docs.\n2. The time trigger (every 5 minutes) POSTs new/updated Docs to `/webhook/meeting-notes-drive`.\n3. n8n only runs when Apps Script sends a Doc — you will **not** see an n8n execution every 5 minutes if nothing changed.\n\nLook at script.google.com → Executions for the clock. n8n Executions only when HQ Tasks should be written.",
-            "height": 380,
+            "content": "## Meeting notes → HQ Tasks\n\nApps Script is the Drive sync (no Google Cloud Console).\n\n**Live Apps Script:**\nhttps://script.google.com/home/projects/1hM320L8wvgULoPY1vEvAoLdTynmnJMYxIKX7w6WSuPKVC3rKkvyz4okw/edit\n\n1. Run **backfillAllMeetingNotes** once for existing Docs.\n2. The time trigger (every 5 minutes) POSTs new/updated Docs to `/webhook/meeting-notes-drive`.\n3. n8n only runs when Apps Script sends a Doc — you will **not** see an n8n execution every 5 minutes if nothing changed.\n\nLook at that project → Executions for the clock. n8n Executions only when HQ Tasks should be written.",
+            "height": 460,
             "width": 340,
             "color": 7,
         },

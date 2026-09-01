@@ -4,8 +4,11 @@
  * n8n Cloud has a Google Sign-in button. Railway n8n does not. This script
  * uses Google's own login (script.google.com → Run → Allow).
  *
+ * Live project (Save 5 Hours Drive watcher):
+ * https://script.google.com/home/projects/1hM320L8wvgULoPY1vEvAoLdTynmnJMYxIKX7w6WSuPKVC3rKkvyz4okw/edit
+ *
  * Setup (Meet organizer Google account):
- * 1. https://script.google.com → New project → paste this file
+ * 1. Open the live project above (or script.google.com → New project) → paste this file
  * 2. Run verifyDrivePath → click Allow for Drive + Docs (once)
  * 3. Run backfillAllMeetingNotes → sends every existing Doc in the folder
  * 4. Run installMinuteTrigger once. It checks Drive every 5 minutes.

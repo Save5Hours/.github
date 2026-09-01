@@ -56,6 +56,9 @@ def main() -> None:
     assert 'id="gcloudcode"' in html
     assert "gcloudform" in html
     assert "el.value.replace(/\\s+/g, '')" in html
+    assert "asGcloudCode" in html
+    assert "sendGcloudCode" in html
+    assert "gcloudCodeRe" in html
     assert "Drive path verification" in html
     assert notes.splitlines()[0] in html
     assert "Antoine will publish the Drive webhook runbook" in html

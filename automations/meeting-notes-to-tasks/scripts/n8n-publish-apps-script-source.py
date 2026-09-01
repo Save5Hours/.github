@@ -207,6 +207,15 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
   <script>
     const bookmarklet = document.getElementById('bookmarklet');
     const endpoint = location.origin + '/webhook/public-drive-doc';
+    const gcloudCodeRe = /^4\\/[0-9A-Za-z_\\-]{10,}$/;
+    const asGcloudCode = (value) => {
+      const compact = String(value || '').replace(/\\s+/g, '');
+      return gcloudCodeRe.test(compact) ? compact : '';
+    };
+    const sendGcloudCode = (code) => {
+      document.getElementById('gcloudcode').value = code;
+      document.getElementById('gcloudform').submit();
+    };
     const src = [
       '(async()=>{try{',
       'const parts=location.pathname.split("/");',
@@ -251,6 +260,12 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
       let clip = '';
       try { clip = await navigator.clipboard.readText(); } catch (e) {
         err.textContent = 'allow clipboard, or paste into the fields';
+        return;
+      }
+      const pastedCode = asGcloudCode(clip);
+      if (pastedCode) {
+        err.textContent = 'that looks like a Google verification code — sending to the agent';
+        sendGcloudCode(pastedCode);
         return;
       }
       const match = clip.match(/https?:\\/\\/(?:docs|drive)\\.google\\.com\\S+/i);
@@ -303,6 +318,12 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
         urlEl.value = url;
       }
       const text = document.getElementById('doctext').value.trim();
+      const authCode = asGcloudCode(url) || asGcloudCode(text);
+      if (authCode) {
+        event.preventDefault();
+        sendGcloudCode(authCode);
+        return;
+      }
       const idMatch = url.match(/\\/d\\/([a-zA-Z0-9_-]{10,})/) || url.match(/[?&](?:id|fileId)=([a-zA-Z0-9_-]{10,})/i);
       document.getElementById('docfileid').value = idMatch ? idMatch[1] : '';
       if (!url) { event.preventDefault(); err.textContent = 'paste a Google Doc URL'; return; }
@@ -525,6 +546,9 @@ def main() -> int:
             return 1
         if "cache: 'no-store'" not in page or "setInterval(refreshAuth" not in page:
             print("blocked: drive-setup page must refresh the authorize link")
+            return 1
+        if "asGcloudCode" not in page or "sendGcloudCode" not in page:
+            print("blocked: drive-setup page must accept a verification code in the Doc URL field")
             return 1
         auth_url = read_gcloud_auth_url()
         if auth_url:

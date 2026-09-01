@@ -144,18 +144,88 @@ export function notionBlockText(blocks) {
 
 /** Notion comments list (GET /v1/comments?block_id=) → concatenated text. */
 export function notionCommentsText(comments) {
-  const results = (comments && comments.results) || (Array.isArray(comments) ? comments : []);
+  return notionCommentChunks(comments).join('\n');
+}
+
+function spanText(spans) {
+  if (!Array.isArray(spans)) return '';
   const parts = [];
-  for (const row of results) {
-    if (!row || typeof row !== 'object') continue;
-    const spans = row.rich_text || [];
-    if (!Array.isArray(spans)) continue;
-    for (const span of spans) {
-      parts.push(span.plain_text || '');
-      if (span.href) parts.push(span.href);
-    }
+  for (const span of spans) {
+    parts.push(span.plain_text || '');
+    if (span.href) parts.push(span.href);
   }
   return parts.filter(Boolean).join('\n');
+}
+
+function notionBlockChunks(blocks) {
+  const results = (blocks && blocks.results) || (Array.isArray(blocks) ? blocks : []);
+  const chunks = [];
+  for (const block of results) {
+    if (!block || typeof block !== 'object') continue;
+    const inner = block[block.type] || {};
+    const text = [spanText(inner.rich_text || inner.caption), inner.url].filter(Boolean).join('\n');
+    if (text.trim()) chunks.push(text);
+  }
+  return chunks;
+}
+
+function notionCommentChunks(comments) {
+  const results = (comments && comments.results) || (Array.isArray(comments) ? comments : []);
+  const chunks = [];
+  for (const row of results) {
+    if (!row || typeof row !== 'object') continue;
+    const text = spanText(row.rich_text);
+    if (text.trim()) chunks.push(text);
+  }
+  return chunks;
+}
+
+const HQ_INSTRUCTION_MARKERS = [
+  'webhook_secret',
+  'verifydrivepath',
+  'send this doc to hq tasks',
+  'n8n is already active',
+  'ignore earlier comments',
+  'ignore older comments',
+  'paste the drive folder',
+  'you do not need an n8n login',
+  'copy apps script',
+  'meeting notes webhook secret',
+  'do not paste secrets',
+  'drag this link to your bookmarks',
+];
+
+function looksLikeHqInstruction(text) {
+  const lower = String(text || '').toLowerCase();
+  return HQ_INSTRUCTION_MARKERS.some((marker) => lower.includes(marker));
+}
+
+function stripDriveUrls(text) {
+  return String(text || '')
+    .replace(/https?:\/\/(?:docs|drive)\.google\.com\S+/gi, ' ')
+    .replace(/FILE_ID\s+[a-zA-Z0-9_-]{10,}/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Notes a human pasted on the HQ confirmation task (not the runbook body). */
+export function hqPastedNotes(extra) {
+  let chunks = [];
+  if (typeof extra === 'string') {
+    chunks = [extra];
+  } else if (extra && typeof extra === 'object') {
+    chunks = [
+      ...notionBlockChunks(extra.blocks || extra),
+      ...notionCommentChunks(extra.comments || extra),
+    ];
+  }
+  const notes = [];
+  for (const chunk of chunks) {
+    if (looksLikeHqInstruction(chunk)) continue;
+    const stripped = stripDriveUrls(chunk);
+    if (noteTextIsReady(stripped)) notes.push(stripped);
+  }
+  return notes.join('\n\n');
 }
 
 /** Notion HQ confirmation page → Drive Doc payload (no inline-* ids). */
@@ -175,6 +245,7 @@ export function parseHqDriveConfirmation(page, extra) {
   return extractPublicDrivePayload({
     url: `${notionPlain(props['Drive URL'])}\n${extraText}`,
     fileId: notionPlain(props['Drive file ID']),
+    text: hqPastedNotes(extra),
     name: notionPlain(props.Name) || 'Gemini notes',
   });
 }

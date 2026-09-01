@@ -171,6 +171,55 @@ test('parseHqDriveConfirmation reads Notion Drive URL and file ID properties', (
     },
   );
   assert.equal(fromComments.fileId, '1DocVerifyFileIdNotInline99');
+  assert.equal(fromComments.hasText, false);
+
+  const notes = readFileSync(join(root, 'fixtures/drive-verify-notes.txt'), 'utf8');
+  const fromCommentNotes = parseHqDriveConfirmation(
+    { properties: { Name: { title: [{ plain_text: 'Confirm the Drive folder' }] } } },
+    {
+      comments: {
+        results: [
+          {
+            rich_text: [
+              {
+                plain_text: `https://docs.google.com/document/d/1DocVerifyFileIdNotInline99/edit\n\n${notes}`,
+                href: 'https://docs.google.com/document/d/1DocVerifyFileIdNotInline99/edit',
+              },
+            ],
+          },
+        ],
+      },
+    },
+  );
+  assert.equal(fromCommentNotes.fileId, '1DocVerifyFileIdNotInline99');
+  assert.equal(fromCommentNotes.hasText, true);
+  assert.match(fromCommentNotes.inlineText, /Antoine will publish/);
+  assert.doesNotMatch(fromCommentNotes.inlineText, /docs\.google\.com/);
+
+  const instructionBody = parseHqDriveConfirmation(
+    {
+      properties: {
+        'Drive URL': { url: 'https://docs.google.com/document/d/1DocVerifyFileIdNotInline99/edit' },
+      },
+    },
+    {
+      results: [
+        {
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [
+              {
+                plain_text:
+                  'Do this now — n8n is already Active. OpenRouter + Notion are live. Ignore WEBHOOK_SECRET. Fastest: Drive setup paste URL.',
+              },
+            ],
+          },
+        },
+      ],
+    },
+  );
+  assert.equal(instructionBody.fileId, '1DocVerifyFileIdNotInline99');
+  assert.equal(instructionBody.hasText, false);
 });
 
 test('driveCallerAllowed is Save 5 Hours plus known organizer Gmail', () => {

@@ -103,6 +103,8 @@ assert conns["Skip imported HQ Drive"]["main"][0][0]["node"] == "Has Doc text al
 hq_parse = nodes["Parse HQ Drive confirmation"]["parameters"]["jsCode"]
 if "parseHqDriveConfirmation" not in hq_parse:
     raise SystemExit("Parse HQ Drive confirmation must use parseHqDriveConfirmation")
+if "hqPastedNotes" not in hq_parse:
+    raise SystemExit("Parse HQ Drive confirmation must use pasted HQ notes (hqPastedNotes)")
 if "notionCommentsText" not in hq_parse and "comments" not in hq_parse:
     raise SystemExit("Parse HQ Drive confirmation must read HQ task comments")
 merge_public = nodes["Merge public Doc"]["parameters"]["jsCode"]

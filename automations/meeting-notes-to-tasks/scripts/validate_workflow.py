@@ -32,6 +32,8 @@ required = [
     "Has Doc text already",
     "Export public Doc",
     "Merge public Doc",
+    "Export usable",
+    "Public webhook ack",
     "HQ Drive URL poll",
     "Fetch HQ Drive confirmation",
     "Fetch HQ Drive blocks",
@@ -89,16 +91,22 @@ assert conns["Drive Apps Script GET"]["main"][0][0]["node"] == "Redirect to Driv
 assert "/webhook/drive-setup" in nodes["Redirect to Drive setup"]["parameters"]["responseBody"]
 assert conns["Parse Drive URL"]["main"][0][0]["node"] == "Has Drive file ID"
 true_nodes = [link["node"] for link in conns["Has Drive file ID"]["main"][0]]
-assert true_nodes == ["Respond public Doc", "Has Doc text already"]
+assert true_nodes == ["Has Doc text already"]
 assert conns["Has Drive file ID"]["main"][1][0]["node"] == "Respond public Doc error"
 assert "Respond public Doc" not in conns
 assert conns["Respond public Doc error"]["main"][0][0]["node"] == "Reject missing Drive URL"
 assert nodes["Respond public Doc error"]["parameters"]["options"]["responseCode"] == 400
 assert nodes["Public Drive Doc"]["parameters"]["responseMode"] == "responseNode"
-assert conns["Has Doc text already"]["main"][0][0]["node"] == "Normalize file"
+assert conns["Has Doc text already"]["main"][0][0]["node"] == "Public webhook ack"
 assert conns["Has Doc text already"]["main"][1][0]["node"] == "Export public Doc"
 assert conns["Export public Doc"]["main"][0][0]["node"] == "Merge public Doc"
-assert conns["Merge public Doc"]["main"][0][0]["node"] == "Normalize file"
+assert conns["Merge public Doc"]["main"][0][0]["node"] == "Export usable"
+assert conns["Export usable"]["main"][0][0]["node"] == "Public webhook ack"
+assert conns["Export usable"]["main"][1][0]["node"] == "Respond public Doc error"
+ack_true = [link["node"] for link in conns["Public webhook ack"]["main"][0]]
+assert ack_true == ["Respond public Doc", "Normalize file"]
+assert conns["Public webhook ack"]["main"][1][0]["node"] == "Normalize file"
+assert nodes["Export public Doc"].get("continueOnFail") is True
 assert conns["HQ Drive URL poll"]["main"][0][0]["node"] == "Fetch HQ Drive confirmation"
 assert conns["Fetch HQ Drive confirmation"]["main"][0][0]["node"] == "Fetch HQ Drive blocks"
 assert conns["Fetch HQ Drive blocks"]["main"][0][0]["node"] == "Fetch HQ Drive comments"
@@ -129,10 +137,16 @@ if "Parse HQ Drive confirmation" not in merge_public:
     raise SystemExit("Merge public Doc must read Parse HQ Drive confirmation meta")
 if "publicExportLooksLikeHtml" not in merge_public:
     raise SystemExit("Merge public Doc must reject HTML export bodies")
+if "fromPublicWebhook" not in merge_public:
+    raise SystemExit("Merge public Doc must keep public-webhook export failures off HQ poll")
+if "exportFailed" not in merge_public:
+    raise SystemExit("Merge public Doc must flag failed public exports")
 assert nodes["Public Drive Doc"]["parameters"]["path"] == "public-drive-doc"
 parse_public = nodes["Parse Drive URL"]["parameters"]["jsCode"]
 if "extractPublicDrivePayload" not in parse_public:
     raise SystemExit("Parse Drive URL must use extractPublicDrivePayload")
+if "fromPublicWebhook" not in parse_public:
+    raise SystemExit("Parse Drive URL must mark public webhook items")
 if r"docs\.google\.com\/open\?id=" not in parse_public:
     raise SystemExit("Parse Drive URL must accept Apps Script docs.google.com/open?id= URLs")
 assert nodes["Drive Apps Script"]["parameters"]["path"] == "meeting-notes-drive"

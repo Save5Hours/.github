@@ -128,7 +128,7 @@ return [{ json: original }];
 
 PARSE_PUBLIC_CODE = TRANSFORM_JS + "\n\n" + r"""
 const parsed = extractPublicDrivePayload($input.first().json || {});
-return [{ json: { ...parsed, ok: Boolean(parsed.fileId) } }];
+return [{ json: { ...parsed, ok: Boolean(parsed.fileId), fromPublicWebhook: true } }];
 """.strip()
 
 REJECT_PUBLIC_CODE = (
@@ -147,16 +147,22 @@ const fromUrl = nodeJson('Parse Drive URL');
 const fromHq = nodeJson('Parse HQ Drive confirmation');
 const meta = fromUrl.fileId ? fromUrl : fromHq;
 const raw = $input.first().json;
+if (raw && typeof raw === 'object' && (raw.error || Number(raw.statusCode) >= 400)) {
+  if (meta.fromPublicWebhook) {
+    return [{ json: { ...meta, exportFailed: true } }];
+  }
+  throw new Error('Could not export the Doc');
+}
 let text = '';
 if (typeof raw === 'string') text = raw;
 else if (raw && typeof raw === 'object') text = String(raw.data || raw.text || raw.body || '');
-if (publicExportLooksLikeHtml(text)) {
+if (publicExportLooksLikeHtml(text) || !noteTextIsReady(text)) {
+  if (meta.fromPublicWebhook) {
+    return [{ json: { ...meta, exportFailed: true } }];
+  }
   throw new Error('Could not export the Doc. Share it as Anyone with the link can view, or paste the notes text.');
 }
-if (!noteTextIsReady(text)) {
-  throw new Error('Doc is empty or not shared publicly');
-}
-return [{ json: { ...meta, text, inlineText: text.trim() } }];
+return [{ json: { ...meta, text, inlineText: text.trim(), exportFailed: false } }];
 """.strip()
 
 PARSE_HQ_CODE = TRANSFORM_JS + "\n\n" + r"""
@@ -544,6 +550,8 @@ nodes = [
                 "<title>Missing Google Doc</title>"
                 "<body style=\"font:16px/1.45 system-ui;padding:2rem\">"
                 "<p>Paste a Google Doc URL, and the notes text if the Doc is private.</p>"
+                "<p>A public export was missing or looked like a sign-in page. "
+                "Paste the notes (~80+ characters) on Drive setup, or share Anyone with the link.</p>"
                 "<p>Go back to <a href=\"/webhook/drive-setup\">Drive setup</a>, "
                 "or drag <strong>Send this Doc to HQ Tasks</strong> onto a "
                 "<code>docs.google.com</code> tab.</p></body></html>"
@@ -611,6 +619,7 @@ nodes = [
                 "response": {"response": {"fullResponse": False, "responseFormat": "text"}},
             },
         },
+        "continueOnFail": True,
         "retryOnFail": True,
         "maxTries": 2,
         "waitBetweenTries": 1000,
@@ -622,6 +631,66 @@ nodes = [
         "typeVersion": 2,
         "position": [1300, 1120],
         "parameters": {"jsCode": MERGE_PUBLIC_CODE},
+    },
+    {
+        "id": "export-usable",
+        "name": "Export usable",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [1520, 1120],
+        "parameters": {
+            "conditions": {
+                "options": {
+                    "caseSensitive": True,
+                    "leftValue": "",
+                    "typeValidation": "loose",
+                    "version": 2,
+                },
+                "conditions": [
+                    {
+                        "id": "export-ok",
+                        "leftValue": "={{ $json.exportFailed ? \"failed\" : \"ok\" }}",
+                        "rightValue": "ok",
+                        "operator": {
+                            "type": "string",
+                            "operation": "equals",
+                        },
+                    }
+                ],
+                "combinator": "and",
+            },
+            "options": {},
+        },
+    },
+    {
+        "id": "public-webhook-ack",
+        "name": "Public webhook ack",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [1080, 860],
+        "parameters": {
+            "conditions": {
+                "options": {
+                    "caseSensitive": True,
+                    "leftValue": "",
+                    "typeValidation": "loose",
+                    "version": 2,
+                },
+                "conditions": [
+                    {
+                        "id": "from-public-webhook",
+                        "leftValue": "={{ $json.fromPublicWebhook ? \"yes\" : \"\" }}",
+                        "rightValue": "yes",
+                        "operator": {
+                            "type": "string",
+                            "operation": "equals",
+                        },
+                    }
+                ],
+                "combinator": "and",
+            },
+            "options": {},
+        },
     },
     {
         "id": "hq-drive-url-poll",
@@ -1193,22 +1262,34 @@ connections = {
     "Parse Drive URL": conn("Has Drive file ID"),
     "Has Drive file ID": {
         "main": [
-            [
-                {"node": "Respond public Doc", "type": "main", "index": 0},
-                {"node": "Has Doc text already", "type": "main", "index": 0},
-            ],
+            [{"node": "Has Doc text already", "type": "main", "index": 0}],
             [{"node": "Respond public Doc error", "type": "main", "index": 0}],
         ]
     },
     "Respond public Doc error": conn("Reject missing Drive URL"),
     "Has Doc text already": {
         "main": [
-            [{"node": "Normalize file", "type": "main", "index": 0}],
+            [{"node": "Public webhook ack", "type": "main", "index": 0}],
             [{"node": "Export public Doc", "type": "main", "index": 0}],
         ]
     },
     "Export public Doc": conn("Merge public Doc"),
-    "Merge public Doc": conn("Normalize file"),
+    "Merge public Doc": conn("Export usable"),
+    "Export usable": {
+        "main": [
+            [{"node": "Public webhook ack", "type": "main", "index": 0}],
+            [{"node": "Respond public Doc error", "type": "main", "index": 0}],
+        ]
+    },
+    "Public webhook ack": {
+        "main": [
+            [
+                {"node": "Respond public Doc", "type": "main", "index": 0},
+                {"node": "Normalize file", "type": "main", "index": 0},
+            ],
+            [{"node": "Normalize file", "type": "main", "index": 0}],
+        ]
+    },
     "HQ Drive URL poll": conn("Fetch HQ Drive confirmation"),
     "Fetch HQ Drive confirmation": conn("Fetch HQ Drive blocks"),
     "Fetch HQ Drive blocks": conn("Fetch HQ Drive comments"),

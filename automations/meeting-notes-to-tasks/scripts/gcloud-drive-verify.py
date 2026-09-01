@@ -161,6 +161,37 @@ def tmux_args(*extra: str) -> list[str]:
     return ["tmux", *conf, *extra]
 
 
+def pkce_challenges(text: str) -> list[str]:
+    return re.findall(r"code_challenge=([^&\s]+)", text or "")
+
+
+def pane_has_new_pkce(text: str, previous: set[str]) -> bool:
+    """True when tmux shows a waiting login whose PKCE is not in previous."""
+    found = pkce_challenges(text)
+    return bool(found) and "Once finished" in (text or "") and any(
+        item not in previous for item in found
+    )
+
+
+def capture_gcloud_pane() -> str:
+    pane = subprocess.run(
+        tmux_args(
+            "capture-pane",
+            "-t",
+            f"{TMUX_SESSION}:0.0",
+            "-J",
+            "-p",
+            "-S",
+            "-80",
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return pane.stdout or ""
+
+
 def gcloud_login_elapsed_seconds() -> float | None:
     proc = subprocess.run(
         ["pgrep", "-f", "gcloud.py auth login"],
@@ -199,6 +230,7 @@ def restart_gcloud_login() -> bool:
     if has.returncode != 0:
         print("blocked: gcloud tmux session is not running")
         return False
+    previous = set(pkce_challenges(capture_gcloud_pane()))
     subprocess.run(
         tmux_args("send-keys", "-t", f"{TMUX_SESSION}:0.0", "C-c"),
         check=False,
@@ -218,23 +250,7 @@ def restart_gcloud_login() -> bool:
     )
     deadline = time.time() + 20
     while time.time() < deadline:
-        pane = subprocess.run(
-            tmux_args(
-                "capture-pane",
-                "-t",
-                f"{TMUX_SESSION}:0.0",
-                "-J",
-                "-p",
-                "-S",
-                "-20",
-            ),
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        text = pane.stdout or ""
-        if "code_challenge=" in text and "Once finished" in text:
+        if pane_has_new_pkce(capture_gcloud_pane(), previous):
             print("refreshed gcloud login PKCE")
             return True
         time.sleep(1)

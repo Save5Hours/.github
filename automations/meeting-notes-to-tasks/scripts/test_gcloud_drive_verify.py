@@ -181,6 +181,12 @@ def main() -> None:
         assert mod.hq_confirmation_auth_code("fake-notion") == "4/0AHqCommentGcloudXX"
 
     assert mod.PKCE_REFRESH_AFTER == 540
+    old_pkce = {"aaaa"}
+    stale = "code_challenge=aaaa\nOnce finished, enter the verification code"
+    fresh = stale + "\ncode_challenge=bbbb\nOnce finished, enter the verification code"
+    assert mod.pkce_challenges(stale) == ["aaaa"]
+    assert mod.pane_has_new_pkce(stale, old_pkce) is False
+    assert mod.pane_has_new_pkce(fresh, old_pkce) is True
     with mock.patch.object(mod, "gcloud_login_elapsed_seconds", return_value=100.0):
         with mock.patch.object(mod, "restart_gcloud_login") as restart:
             assert mod.maybe_refresh_gcloud_pkce() is False

@@ -48,6 +48,7 @@ def main() -> None:
     html = load_publisher().setup_html(src)
     notes = NOTES.read_text(encoding="utf-8").strip()
     assert "docs.new" in html
+    assert "not docs.new" in html
     assert "Drive path verification" in html
     assert notes.splitlines()[0] in html
     assert "Antoine will publish the Drive webhook runbook" in html

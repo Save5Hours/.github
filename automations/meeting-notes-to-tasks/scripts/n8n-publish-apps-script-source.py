@@ -198,6 +198,11 @@ def setup_html(source: str) -> str:
       const idMatch = url.match(/\\/d\\/([a-zA-Z0-9_-]{10,})/) || url.match(/[?&](?:id|fileId)=([a-zA-Z0-9_-]{10,})/i);
       document.getElementById('docfileid').value = idMatch ? idMatch[1] : '';
       if (!url) { event.preventDefault(); err.textContent = 'paste a Google Doc URL'; return; }
+      if (/docs\\.new/i.test(url) || !idMatch) {
+        event.preventDefault();
+        err.textContent = 'wait until the address bar shows docs.google.com/document/d/… then paste that URL (not docs.new)';
+        return;
+      }
       if (!/(docs|drive)\\.google\\.com/i.test(url)) {
         event.preventDefault();
         err.textContent = 'use a docs.google.com or drive.google.com link';
@@ -354,6 +359,9 @@ def main() -> int:
             return 1
         if "docs.new" not in page:
             print("blocked: drive-setup page missing docs.new shortcut")
+            return 1
+        if "not docs.new" not in page:
+            print("blocked: drive-setup form must reject docs.new without a file id")
             return 1
         if "Drive path verification" not in page:
             print("blocked: drive-setup form must prefill verification notes")

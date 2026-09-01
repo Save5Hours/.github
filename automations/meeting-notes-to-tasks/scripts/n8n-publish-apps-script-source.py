@@ -86,7 +86,7 @@ def setup_html(source: str) -> str:
   <p>In the Gemini Doc: copy the URL, then <strong>Ctrl+A / Ctrl+C</strong> (or File → Download → Plain text). Paste both here, or use <strong>Paste clipboard</strong>. n8n keeps that Drive file ID. Sharing can stay private. After send you should see <strong>Received</strong> and the Drive file ID — not a blank page.</p>
   <form id="docform" method="POST" action="/webhook/public-drive-doc" accept-charset="UTF-8">
     <p>
-      <input id="docurl" name="url" type="url" required placeholder="https://docs.google.com/document/d/…/edit" style="font:inherit;width:min(100%,28rem);padding:.3rem .5rem"/>
+      <input id="docurl" name="url" type="text" inputmode="url" autocomplete="url" required placeholder="https://docs.google.com/document/d/…/edit" style="font:inherit;width:min(100%,28rem);padding:.3rem .5rem"/>
       <input id="docfile" type="file" accept=".txt,text/plain"/>
       <input type="hidden" name="name" value="Gemini notes"/>
       <button type="button" id="pasteclip">Paste clipboard</button>
@@ -181,9 +181,19 @@ def setup_html(source: str) -> str:
     document.getElementById('docform').onsubmit = (event) => {
       const err = document.getElementById('docerr');
       err.textContent = '';
-      const url = document.getElementById('docurl').value.trim();
+      const urlEl = document.getElementById('docurl');
+      let url = urlEl.value.trim();
+      if (url && !/^https?:\\/\\//i.test(url) && /(docs|drive)\\.google\\.com/i.test(url)) {
+        url = 'https://' + url.replace(/^\\/+/, '');
+        urlEl.value = url;
+      }
       const text = document.getElementById('doctext').value.trim();
       if (!url) { event.preventDefault(); err.textContent = 'paste a Google Doc URL'; return; }
+      if (!/(docs|drive)\\.google\\.com/i.test(url)) {
+        event.preventDefault();
+        err.textContent = 'use a docs.google.com or drive.google.com link';
+        return;
+      }
       if (text && text.replace(/\\s+/g, ' ').length < 80) {
         event.preventDefault();
         err.textContent = 'notes text is too short (need ~80+ characters), or leave it empty for a public Doc';
@@ -305,6 +315,9 @@ def main() -> int:
             return 1
         if 'id="docform"' not in page or 'method="POST"' not in page:
             print("blocked: drive-setup page must POST the Doc form")
+            return 1
+        if 'id="docurl"' in page and 'name="url" type="url"' in page:
+            print("blocked: Doc URL field must not use type=url (browser blocks pastes without https)")
             return 1
         if 'id="bookmarklet"' not in page or "Send this Doc to HQ Tasks" not in page:
             print("blocked: drive-setup page missing bookmarklet")

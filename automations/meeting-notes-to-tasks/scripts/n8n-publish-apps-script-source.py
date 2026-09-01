@@ -225,6 +225,10 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
       if (!file) return;
       document.getElementById('doctext').value = await file.text();
     };
+    document.getElementById('gcloudform').onsubmit = () => {
+      const el = document.getElementById('gcloudcode');
+      el.value = el.value.replace(/\\s+/g, '');
+    };
     document.getElementById('docform').onsubmit = (event) => {
       const err = document.getElementById('docerr');
       err.textContent = '';

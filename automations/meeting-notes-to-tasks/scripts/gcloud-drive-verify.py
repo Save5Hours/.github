@@ -85,10 +85,14 @@ def parse_gcloud_auth_code(src) -> str:
         body = parsed
     if not isinstance(body, dict):
         body = {}
-    code = str(body.get("code") or root.get("code") or "").strip()
+    raw_code = body.get("code") or root.get("code") or ""
+    if isinstance(raw_code, list):
+        raw_code = raw_code[-1] if raw_code else ""
+    # Google's authcode page wraps the value; pasted codes often include newlines.
+    code = "".join(str(raw_code).split())
     if not code or code.startswith("http") or "accounts.google.com" in code.lower():
         return ""
-    if any(ch.isspace() for ch in code) or len(code) < 8:
+    if len(code) < 8:
         return ""
     return code
 

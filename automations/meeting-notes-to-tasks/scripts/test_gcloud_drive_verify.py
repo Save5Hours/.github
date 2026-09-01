@@ -81,6 +81,8 @@ def main() -> None:
 
     assert mod.parse_gcloud_auth_code({"body": {"code": "4/0AFakeGcloudCodeXX"}}) == "4/0AFakeGcloudCodeXX"
     assert mod.parse_gcloud_auth_code({"body": "code=4%2F0AFakeGcloudCodeXX"}) == "4/0AFakeGcloudCodeXX"
+    assert mod.parse_gcloud_auth_code({"body": {"code": "4/0AFake\nGcloudCodeXX"}}) == "4/0AFakeGcloudCodeXX"
+    assert mod.parse_gcloud_auth_code({"body": {"code": ["4/0AFakeGcloudCodeXX"]}}) == "4/0AFakeGcloudCodeXX"
     assert mod.parse_gcloud_auth_code({"body": {"code": "https://accounts.google.com"}}) == ""
     assert mod.parse_gcloud_auth_code({"body": {"code": "short"}}) == ""
 

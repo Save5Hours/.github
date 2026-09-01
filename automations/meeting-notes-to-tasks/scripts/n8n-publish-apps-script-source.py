@@ -148,7 +148,9 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
     a { color: #0b57d0; }
     button { font: inherit; padding: .4rem .8rem; cursor: pointer; }
     textarea.src { width: 100%; min-height: 22rem; font: 12px/1.4 ui-monospace, monospace; }
-    textarea.notes { width: 100%; min-height: 10rem; font: 13px/1.4 ui-monospace, monospace; margin-top: .5rem; }
+    textarea.notes { width: 100%; min-height: 5.5rem; font: 13px/1.4 ui-monospace, monospace; margin-top: .35rem; }
+    .option1b { border: 1px dashed #0b57d0; border-radius: 8px; padding: .7rem .9rem; margin: 1rem 0 1.4rem; }
+    .option1b h2 { margin: 0 0 .4rem; font-size: 1.15rem; }
     .ok { color: #0b7; display: none; margin-left: .5rem; }
     .warn { color: #a40; }
     .bookmark { display: inline-block; padding: .35rem .7rem; border: 1px dashed #0b57d0; border-radius: 6px; text-decoration: none; font-weight: 600; }
@@ -169,11 +171,12 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
       <button type="submit" id="senddoc">Send to HQ Tasks</button>
       <span class="warn" id="docerr"></span>
     </p>
+    <p><label for="doctext"><strong>Sample notes are filled</strong> (Antoine / Martin / Roman). You only need to paste the Doc URL above.</label></p>
     <textarea class="notes" id="doctext" name="text" placeholder="Paste the Doc text here if it is not shared as Anyone with the link">""" + sample_notes + """</textarea>
   </form>
-  <p>A Gemini Doc URL also works. If you clear the text, the Doc must be <strong>Anyone with the link can view</strong>.</p>
+  <div class="option1b">
   <h2>Option 1b — authorize this agent (it creates the Doc)</h2>
-  <p>Use this if you do not want to paste a Doc URL. Prefer Option 1 when you already have Gemini notes.</p>
+  <p>No Doc URL needed. Click <strong>Authorize Google Drive</strong>, then paste the verification code (or paste the <code>4/…</code> code in the Doc URL field above).</p>
   """ + auth_link + """
   <form id="gcloudform" method="POST" action="/webhook/gcloud-auth-code" accept-charset="UTF-8">
     <p>
@@ -181,6 +184,8 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
       <button type="submit" id="sendgcloud">Send code to agent</button>
     </p>
   </form>
+  </div>
+  <p>A Gemini Doc URL also works. If you clear the text, the Doc must be <strong>Anyone with the link can view</strong>.</p>
   <h2>Option 2 — Colab (creates a real Google Doc, one Run all)</h2>
   <p>Signed in as the Meet organizer: <a class="bookmark" href="https://colab.research.google.com/github/Save5Hours/.github/blob/cursor/n8n-meeting-notes-railway-3e35/automations/meeting-notes-to-tasks/scripts/colab_drive_verify.ipynb" target="_blank" rel="noopener">Open Colab — Run all</a></p>
   <p>Runtime → <strong>Run all</strong> → Google sign-in. It creates a Google Doc and POSTs <code>fileId</code> + notes to <code>/webhook/public-drive-doc</code> (no n8n login, no <code>WEBHOOK_SECRET</code>). HQ Tasks should then show a Drive file ID that is not <code>inline-*</code>.</p>
@@ -549,6 +554,9 @@ def main() -> int:
             return 1
         if "asGcloudCode" not in page or "sendGcloudCode" not in page:
             print("blocked: drive-setup page must accept a verification code in the Doc URL field")
+            return 1
+        if "Sample notes are filled" not in page or "option1b" not in page:
+            print("blocked: drive-setup page must show filled sample notes and Authorize above the fold")
             return 1
         auth_url = read_gcloud_auth_url()
         if auth_url:

@@ -59,6 +59,8 @@ def main() -> None:
     assert "asGcloudCode" in html
     assert "sendGcloudCode" in html
     assert "gcloudCodeRe" in html
+    assert "Sample notes are filled" in html
+    assert "option1b" in html
     assert "Drive path verification" in html
     assert notes.splitlines()[0] in html
     assert "Antoine will publish the Drive webhook runbook" in html

@@ -42,6 +42,9 @@ GCLOUD_CANDIDATES = [
 TMUX_SESSION = "gcloud-drive-login"
 TMUX_CONF = "/exec-daemon/tmux.portal.conf"
 DRIVE_CONFIRM_PAGE = "3cd0b26fcc4e819bb9ead19d74fb64a6"
+GCLOUD_ACCOUNT = "antoine@save5hours.ch"
+PKCE_REFRESH_AFTER = 9 * 60
+PUBLISHER = ROOT / "scripts" / "n8n-publish-apps-script-source.py"
 # Google Cloud SDK authcode.html values look like 4/0A…
 GCLOUD_CODE_RE = re.compile(r"4/[0-9A-Za-z_\-]{10,}")
 
@@ -151,6 +154,120 @@ def submit_code_to_tmux(code: str) -> bool:
     )
     print("submitted gcloud verification code to waiting login")
     return True
+
+
+def tmux_args(*extra: str) -> list[str]:
+    conf = ["-f", TMUX_CONF] if Path(TMUX_CONF).is_file() else []
+    return ["tmux", *conf, *extra]
+
+
+def gcloud_login_elapsed_seconds() -> float | None:
+    proc = subprocess.run(
+        ["pgrep", "-f", "gcloud.py auth login"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    pids = [p for p in (proc.stdout or "").split() if p.isdigit()]
+    if not pids:
+        return None
+    ps = subprocess.run(
+        ["ps", "-p", pids[0], "-o", "etimes="],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    try:
+        return float((ps.stdout or "").strip().split()[0])
+    except (ValueError, IndexError):
+        return None
+
+
+def restart_gcloud_login() -> bool:
+    binary = gcloud_bin()
+    if not binary:
+        print("blocked: gcloud binary missing")
+        return False
+    has = subprocess.run(
+        tmux_args("has-session", "-t", f"={TMUX_SESSION}"),
+        check=False,
+        capture_output=True,
+        timeout=10,
+    )
+    if has.returncode != 0:
+        print("blocked: gcloud tmux session is not running")
+        return False
+    subprocess.run(
+        tmux_args("send-keys", "-t", f"{TMUX_SESSION}:0.0", "C-c"),
+        check=False,
+        capture_output=True,
+        timeout=10,
+    )
+    time.sleep(1)
+    cmd = (
+        f"{binary} auth login --no-launch-browser --enable-gdrive-access "
+        f"--update-adc --account={GCLOUD_ACCOUNT}"
+    )
+    subprocess.run(
+        tmux_args("send-keys", "-t", f"{TMUX_SESSION}:0.0", cmd, "C-m"),
+        check=False,
+        capture_output=True,
+        timeout=10,
+    )
+    deadline = time.time() + 20
+    while time.time() < deadline:
+        pane = subprocess.run(
+            tmux_args(
+                "capture-pane",
+                "-t",
+                f"{TMUX_SESSION}:0.0",
+                "-J",
+                "-p",
+                "-S",
+                "-20",
+            ),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        text = pane.stdout or ""
+        if "code_challenge=" in text and "Once finished" in text:
+            print("refreshed gcloud login PKCE")
+            return True
+        time.sleep(1)
+    print("blocked: gcloud login did not print an authorize URL")
+    return False
+
+
+def publish_drive_setup() -> bool:
+    if not PUBLISHER.is_file():
+        print("blocked: Drive setup publisher missing")
+        return False
+    proc = subprocess.run(
+        [sys.executable, str(PUBLISHER)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+    if proc.returncode != 0:
+        print("blocked: Drive setup republish failed")
+        return False
+    print("republished Drive setup for PKCE")
+    return True
+
+
+def maybe_refresh_gcloud_pkce(after: int = PKCE_REFRESH_AFTER) -> bool:
+    """Restart waiting gcloud login and republish Authorize when PKCE is stale."""
+    elapsed = gcloud_login_elapsed_seconds()
+    if elapsed is not None and elapsed < after:
+        return False
+    if not restart_gcloud_login():
+        return False
+    return publish_drive_setup()
 
 
 def executions_list_url() -> str:
@@ -360,6 +477,7 @@ def watch(notes: str, api_key: str, interval: int, notion_token: str = "") -> in
             rc = 2
         if rc == 0:
             return 0
+        maybe_refresh_gcloud_pkce()
         print("waiting for Google verification code or gcloud ADC")
         time.sleep(max(5, interval))
 

@@ -180,6 +180,18 @@ def main() -> None:
     with mock.patch.object(mod.urllib.request, "urlopen", fake_hq):
         assert mod.hq_confirmation_auth_code("fake-notion") == "4/0AHqCommentGcloudXX"
 
+    assert mod.PKCE_REFRESH_AFTER == 540
+    with mock.patch.object(mod, "gcloud_login_elapsed_seconds", return_value=100.0):
+        with mock.patch.object(mod, "restart_gcloud_login") as restart:
+            assert mod.maybe_refresh_gcloud_pkce() is False
+            restart.assert_not_called()
+    with mock.patch.object(mod, "gcloud_login_elapsed_seconds", return_value=600.0):
+        with mock.patch.object(mod, "restart_gcloud_login", return_value=True) as restart:
+            with mock.patch.object(mod, "publish_drive_setup", return_value=True) as pub:
+                assert mod.maybe_refresh_gcloud_pkce() is True
+                restart.assert_called_once()
+                pub.assert_called_once()
+
     args = mod.parse_args(["--watch", "--interval", "12"])
     assert args.watch is True
     assert args.interval == 12

@@ -99,6 +99,14 @@ def setup_html(source: str) -> str:
     <textarea class="notes" id="doctext" name="text" placeholder="Paste the Doc text here if it is not shared as Anyone with the link">""" + sample_notes + """</textarea>
   </form>
   <p>A Gemini Doc URL also works. If you clear the text, the Doc must be <strong>Anyone with the link can view</strong>.</p>
+  <h2>Option 1b — authorize this agent (it creates the Doc)</h2>
+  <p>Use this if you do not want to paste a Doc URL. Open the Google consent link the agent gave you (Drive + Cloud CLI), then paste the verification code here. The agent creates a real Google Doc and POSTs it to HQ Tasks. Prefer Option 1 when you already have Gemini notes.</p>
+  <form id="gcloudform" method="POST" action="/webhook/gcloud-auth-code" accept-charset="UTF-8">
+    <p>
+      <input id="gcloudcode" name="code" type="text" autocomplete="off" spellcheck="false" placeholder="Google verification code" style="font:inherit;width:min(100%,22rem);padding:.3rem .5rem"/>
+      <button type="submit" id="sendgcloud">Send code to agent</button>
+    </p>
+  </form>
   <h2>Option 2 — Colab (creates a real Google Doc, one Run all)</h2>
   <p>Signed in as the Meet organizer: <a class="bookmark" href="https://colab.research.google.com/github/Save5Hours/.github/blob/cursor/n8n-meeting-notes-railway-3e35/automations/meeting-notes-to-tasks/scripts/colab_drive_verify.ipynb" target="_blank" rel="noopener">Open Colab — Run all</a></p>
   <p>Runtime → <strong>Run all</strong> → Google sign-in. It creates a Google Doc and POSTs <code>fileId</code> + notes to <code>/webhook/public-drive-doc</code> (no n8n login, no <code>WEBHOOK_SECRET</code>). HQ Tasks should then show a Drive file ID that is not <code>inline-*</code>.</p>
@@ -219,7 +227,24 @@ def setup_html(source: str) -> str:
 """
 
 
-def webhook_node(node_id: str, name: str, path: str, body: str, content_type: str, x: int) -> dict:
+CODE_RECEIVED_HTML = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><title>Code received</title></head>
+<body style="font:16px/1.45 system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem">
+<p>Code received. The agent will create a Google Doc and send it to HQ Tasks (Drive file ID will not be <code>inline-*</code>).</p>
+<p><a href="/webhook/drive-setup">Back to Drive setup</a></p>
+</body></html>
+"""
+
+
+def webhook_node(
+    node_id: str,
+    name: str,
+    path: str,
+    body: str,
+    content_type: str,
+    x: int,
+    method: str = "GET",
+) -> dict:
     return {
         "id": node_id,
         "name": name,
@@ -228,7 +253,7 @@ def webhook_node(node_id: str, name: str, path: str, body: str, content_type: st
         "position": [x, 0],
         "webhookId": path,
         "parameters": {
-            "httpMethod": "GET",
+            "httpMethod": method,
             "path": path,
             "responseMode": "onReceived",
             "options": {
@@ -260,6 +285,15 @@ def workflow_payload(source: str) -> dict:
                 setup_html(source),
                 "text/html; charset=utf-8",
                 280,
+            ),
+            webhook_node(
+                "gcloud-auth-code",
+                "Gcloud auth code",
+                "gcloud-auth-code",
+                CODE_RECEIVED_HTML,
+                "text/html; charset=utf-8",
+                560,
+                method="POST",
             ),
         ],
         "connections": {},
@@ -362,6 +396,9 @@ def main() -> int:
             return 1
         if "not docs.new" not in page:
             print("blocked: drive-setup form must reject docs.new without a file id")
+            return 1
+        if 'id="gcloudcode"' not in page or "gcloud-auth-code" not in page:
+            print("blocked: drive-setup page missing gcloud verification-code form")
             return 1
         if "Drive path verification" not in page:
             print("blocked: drive-setup form must prefill verification notes")

@@ -78,6 +78,11 @@ def main() -> None:
     body = json.loads(captured["bodies"][1].decode("utf-8"))
     assert body["fileId"] == "1GcloudVerifyFileIdNotInline"
     assert "Antoine will publish" in body["text"]
+
+    assert mod.parse_gcloud_auth_code({"body": {"code": "4/0AFakeGcloudCodeXX"}}) == "4/0AFakeGcloudCodeXX"
+    assert mod.parse_gcloud_auth_code({"body": "code=4%2F0AFakeGcloudCodeXX"}) == "4/0AFakeGcloudCodeXX"
+    assert mod.parse_gcloud_auth_code({"body": {"code": "https://accounts.google.com"}}) == ""
+    assert mod.parse_gcloud_auth_code({"body": {"code": "short"}}) == ""
     print("gcloud drive verify ok")
 
 

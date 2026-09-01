@@ -49,9 +49,15 @@ def main() -> None:
     notes = NOTES.read_text(encoding="utf-8").strip()
     assert "docs.new" in html
     assert "not docs.new" in html
+    assert "gcloud-auth-code" in html
+    assert 'id="gcloudcode"' in html
     assert "Drive path verification" in html
     assert notes.splitlines()[0] in html
     assert "Antoine will publish the Drive webhook runbook" in html
+    payload = load_publisher().workflow_payload(src)
+    methods = {n["parameters"]["path"]: n["parameters"]["httpMethod"] for n in payload["nodes"]}
+    assert methods["gcloud-auth-code"] == "POST"
+    assert methods["drive-setup"] == "GET"
     print("apps script ok")
 
 

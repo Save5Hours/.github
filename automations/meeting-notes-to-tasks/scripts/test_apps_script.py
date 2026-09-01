@@ -86,6 +86,8 @@ def main() -> None:
     assert "gcloud-auth-url" in linked
     assert "cache: 'no-store'" in linked
     assert "setInterval(refreshAuth" in linked
+    assert "document.hidden" in linked
+    assert "visibilitychange" in linked
     assert 'id="gcloudauth"' in html
     old = "https://accounts.google.com/o/oauth2/auth?state=old&code_challenge=aaaa"
     new = "https://accounts.google.com/o/oauth2/auth?state=new&code_challenge=bbbb"

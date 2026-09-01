@@ -338,6 +338,7 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
       document.getElementById('authok').style.display = 'inline';
     };
     const refreshAuth = async () => {
+      if (document.hidden) return;
       const el = document.getElementById('gcloudauth');
       if (!el) return;
       try {
@@ -350,6 +351,9 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
     };
     refreshAuth();
     setInterval(refreshAuth, 30000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) refreshAuth();
+    });
     document.getElementById('docform').onsubmit = (event) => {
       const err = document.getElementById('docerr');
       err.textContent = '';
@@ -588,6 +592,9 @@ def main() -> int:
             return 1
         if "cache: 'no-store'" not in page or "setInterval(refreshAuth" not in page:
             print("blocked: drive-setup page must refresh the authorize link")
+            return 1
+        if "document.hidden" not in page or "visibilitychange" not in page:
+            print("blocked: drive-setup must skip gcloud-auth-url polls while the tab is hidden")
             return 1
         if "asGcloudCode" not in page or "sendGcloudCode" not in page:
             print("blocked: drive-setup page must accept a verification code in the Doc URL field")

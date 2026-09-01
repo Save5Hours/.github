@@ -1,35 +1,23 @@
 /**
- * Walk a Drive folder tree (Meet Recordings) and POST Gemini Google Docs
- * to the n8n webhook **with the document text**.
+ * Optional helper when Gemini notes sit in Meet Recordings subfolders.
+ * n8n's Google Drive Trigger only sees files sitting directly in one folder.
  *
- * Use this when notes sit in per-meeting subfolders (Drive Trigger does not
- * watch children). Sending `text` means n8n does not need Google OAuth for
- * this path — only OpenRouter + Notion. Auth is the Google token from
- * ScriptApp.getOAuthToken() (Save 5 Hours / known organizer emails).
+ * The normal path is: Sign in on n8n Google Drive OAuth and watch a flat folder.
+ * Use this script only if notes stay nested.
  *
- * Gemini often creates an empty Doc first, then fills it. This script uses
- * lastUpdated and skips notes shorter than 80 characters.
- *
- * Setup (Workspace admin / Meet organizer) — no n8n login:
+ * Setup (Meet organizer):
  * 1. https://script.google.com → New project → paste this file
- * 2. Run **verifyDrivePath** once (creates a real Google Doc, POSTs
- *    {fileId,text} to /webhook/public-drive-doc first — no n8n userinfo —
- *    then /webhook/meeting-notes-drive if that fails, installs the trigger).
- *    Log: FOLDER_URL / FILE_ID → HQ Drive task.
- * Optional Script properties: FOLDER_ID, FOLDER_NAME, WEBHOOK_URL.
- * Optional WEBHOOK_SECRET_PASTE / WEBHOOK_SECRET only if you point WEBHOOK_URL
- * at /webhook/meeting-notes (Header Auth). The default Drive path does not.
+ * 2. Set WEBHOOK_SECRET_PASTE to the n8n Header Auth value
+ *    (credential "Meeting notes webhook secret")
+ * 3. Optional script properties: FOLDER_ID or FOLDER_NAME (default Meet Recordings)
+ * 4. Run verifyDrivePath once, authorize Drive + Docs, then keep the 1-minute trigger
  *
- * Keep VERIFY_NOTES in sync with fixtures/drive-verify-notes.txt.
- * The n8n workflow must be Active.
+ * It POSTs { fileId, name, text } to /webhook/meeting-notes.
  */
 var MIN_NOTE_CHARS = 80;
-var PUBLIC_WEBHOOK =
-  "https://n8n-production-192e.up.railway.app/webhook/public-drive-doc";
 var DEFAULT_WEBHOOK =
-  "https://n8n-production-192e.up.railway.app/webhook/meeting-notes-drive";
+  "https://n8n-production-192e.up.railway.app/webhook/meeting-notes";
 var DEFAULT_FOLDER_NAME = "Meet Recordings";
-// Optional. Only needed for /webhook/meeting-notes (Header Auth), not the default URL.
 var WEBHOOK_SECRET_PASTE = "";
 var VERIFY_FOLDER_NAME = "Gemini meeting notes (n8n)";
 var VERIFY_DOC_NAME = "Gemini notes — Drive path verification (n8n)";
@@ -62,10 +50,6 @@ function listCandidateFolders() {
   );
 }
 
-/**
- * One Run: create a real Google Doc, POST {fileId, text} to n8n, install the
- * 1-minute trigger. HQ Tasks must then show a Drive file ID that is not inline-*.
- */
 function verifyDrivePath() {
   const props = PropertiesService.getScriptProperties();
   const webhookUrl = props.getProperty("WEBHOOK_URL") || DEFAULT_WEBHOOK;
@@ -78,11 +62,6 @@ function verifyDrivePath() {
 
   const file = DriveApp.getFileById(doc.getId());
   file.moveTo(folder);
-  try {
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  } catch (err) {
-    Logger.log("share skipped " + err);
-  }
 
   const text = DocumentApp.openById(file.getId()).getBody().getText();
   const code = postNote_(webhookUrl, secret, file, text);
@@ -165,20 +144,7 @@ function postWithRetry_(url, headers, payload) {
 }
 
 function postNote_(webhookUrl, secret, file, text) {
-  const publicPayload = JSON.stringify({
-    fileId: file.getId(),
-    url: file.getUrl(),
-    name: file.getName(),
-    mimeType: file.getMimeType(),
-    webViewLink: file.getUrl(),
-    text: text,
-  });
-  // Prefer public-drive-doc: fileId+text goes to OpenRouter without Google userinfo.
-  const publicCode = postWithRetry_(PUBLIC_WEBHOOK, {}, publicPayload);
-  if (publicCode >= 200 && publicCode < 300) return publicCode;
-
-  const token = ScriptApp.getOAuthToken();
-  const headers = { Authorization: "Bearer " + token };
+  const headers = {};
   const pasted = String(secret || "").trim();
   if (pasted) headers["X-Webhook-Secret"] = pasted;
   const payload = JSON.stringify({
@@ -187,7 +153,6 @@ function postNote_(webhookUrl, secret, file, text) {
     mimeType: file.getMimeType(),
     webViewLink: file.getUrl(),
     text: text,
-    googleAccessToken: token,
   });
   return postWithRetry_(webhookUrl, headers, payload);
 }

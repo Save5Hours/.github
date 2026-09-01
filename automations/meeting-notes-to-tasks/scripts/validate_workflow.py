@@ -31,6 +31,7 @@ required = [
     "Merge public Doc",
     "HQ Drive URL poll",
     "Fetch HQ Drive confirmation",
+    "Fetch HQ Drive blocks",
     "Parse HQ Drive confirmation",
     "Find HQ Drive duplicates",
     "Skip imported HQ Drive",
@@ -82,7 +83,8 @@ assert conns["Has Doc text already"]["main"][1][0]["node"] == "Export public Doc
 assert conns["Export public Doc"]["main"][0][0]["node"] == "Merge public Doc"
 assert conns["Merge public Doc"]["main"][0][0]["node"] == "Normalize file"
 assert conns["HQ Drive URL poll"]["main"][0][0]["node"] == "Fetch HQ Drive confirmation"
-assert conns["Fetch HQ Drive confirmation"]["main"][0][0]["node"] == "Parse HQ Drive confirmation"
+assert conns["Fetch HQ Drive confirmation"]["main"][0][0]["node"] == "Fetch HQ Drive blocks"
+assert conns["Fetch HQ Drive blocks"]["main"][0][0]["node"] == "Parse HQ Drive confirmation"
 assert conns["Parse HQ Drive confirmation"]["main"][0][0]["node"] == "Find HQ Drive duplicates"
 assert conns["Find HQ Drive duplicates"]["main"][0][0]["node"] == "Skip imported HQ Drive"
 assert conns["Skip imported HQ Drive"]["main"][0][0]["node"] == "Has Doc text already"

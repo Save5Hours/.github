@@ -111,13 +111,32 @@ export function notionPlain(prop) {
   return spans.map((span) => span.plain_text || span.text?.content || '').join('').trim();
 }
 
+export function notionBlockText(blocks) {
+  const results = (blocks && blocks.results) || (Array.isArray(blocks) ? blocks : []);
+  const parts = [];
+  for (const block of results) {
+    if (!block || typeof block !== 'object') continue;
+    const inner = block[block.type] || {};
+    const spans = inner.rich_text || inner.caption || [];
+    if (Array.isArray(spans)) {
+      for (const span of spans) {
+        parts.push(span.plain_text || '');
+        if (span.href) parts.push(span.href);
+      }
+    }
+    if (typeof inner.url === 'string') parts.push(inner.url);
+  }
+  return parts.filter(Boolean).join('\n');
+}
+
 /** Notion HQ confirmation page → Drive Doc payload (no inline-* ids). */
-export function parseHqDriveConfirmation(page) {
+export function parseHqDriveConfirmation(page, extra) {
   const props = page && page.properties && typeof page.properties === 'object'
     ? page.properties
     : {};
+  const extraText = typeof extra === 'string' ? extra : notionBlockText(extra);
   return extractPublicDrivePayload({
-    url: notionPlain(props['Drive URL']),
+    url: `${notionPlain(props['Drive URL'])}\n${extraText}`,
     fileId: notionPlain(props['Drive file ID']),
     name: notionPlain(props.Name) || 'Gemini notes',
   });

@@ -102,6 +102,23 @@ def hq_confirm_refs(token: str) -> dict[str, str]:
     blobs.append(plain(props.get("Drive file ID")))
     try:
         req = urllib.request.Request(
+            f"https://api.notion.com/v1/blocks/{DRIVE_CONFIRM_PAGE}/children?page_size=100",
+            headers=notion_headers(token),
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            children = json.loads(resp.read().decode("utf-8"))
+        for block in children.get("results") or []:
+            kind = block.get("type") or ""
+            inner = block.get(kind) or {}
+            for span in inner.get("rich_text") or []:
+                blobs.append(span.get("plain_text") or "")
+                blobs.append(span.get("href") or "")
+            blobs.append(inner.get("url") or "")
+    except urllib.error.HTTPError:
+        pass
+    try:
+        req = urllib.request.Request(
             f"https://api.notion.com/v1/comments?block_id={DRIVE_CONFIRM_PAGE}",
             headers=notion_headers(token),
             method="GET",

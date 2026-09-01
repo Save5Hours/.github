@@ -35,6 +35,7 @@ DRIVE_UPLOAD = (
 TITLE = "Gemini notes — Drive path verification (n8n)"
 N8N_BASE = "https://n8n-production-192e.up.railway.app"
 DRIVE_SETUP_WF = "RU7qrw4zZPhZh6Kw"
+AUTH_CODE_NODE = "Gcloud auth code"
 GCLOUD_CANDIDATES = [
     Path.home() / "google-cloud-sdk-dl" / "google-cloud-sdk" / "bin" / "gcloud",
     Path("/usr/bin/gcloud"),
@@ -132,10 +133,16 @@ def extract_gcloud_code_from_text(text: str) -> str:
     return parse_gcloud_auth_code({"code": match.group(0)})
 
 
-def iter_execution_jsons(detail: dict):
+def iter_execution_jsons(detail: dict, node_name: str = ""):
     run = (detail.get("data") or {}).get("resultData") or {}
     nodes = run.get("runData") or {}
-    for runs in nodes.values():
+    if node_name:
+        if node_name not in nodes:
+            return
+        selected = {node_name: nodes[node_name]}
+    else:
+        selected = nodes
+    for runs in selected.values():
         for item_run in runs or []:
             mains = ((item_run.get("data") or {}).get("main") or [[]])[0]
             for item in mains or []:
@@ -343,7 +350,11 @@ def maybe_refresh_gcloud_pkce(after: int = PKCE_REFRESH_AFTER) -> bool:
 
 def executions_list_url() -> str:
     query = urllib.parse.urlencode(
-        {"workflowId": DRIVE_SETUP_WF, "limit": 50}
+        {
+            "workflowId": DRIVE_SETUP_WF,
+            "limit": 50,
+            "includeData": "true",
+        }
     )
     return f"{N8N_BASE}/api/v1/executions?{query}"
 
@@ -375,18 +386,24 @@ def n8n_latest_auth_code(api_key: str, seen: set[str] | None = None) -> str:
         eid = str(row.get("id") or "")
         if not eid or (seen is not None and eid in seen):
             continue
-        detail_req = urllib.request.Request(
-            f"{N8N_BASE}/api/v1/executions/{eid}?includeData=true",
-            headers={"X-N8N-API-KEY": api_key, "Accept": "application/json"},
-        )
-        try:
-            detail = n8n_get_json(detail_req)
-        except (TimeoutError, urllib.error.URLError, OSError):
-            print(f"n8n execution {eid} timed out")
-            continue
+        detail = row
+        run_data = ((detail.get("data") or {}).get("resultData") or {}).get("runData") or {}
+        if not run_data:
+            detail_req = urllib.request.Request(
+                f"{N8N_BASE}/api/v1/executions/{eid}?includeData=true",
+                headers={"X-N8N-API-KEY": api_key, "Accept": "application/json"},
+            )
+            try:
+                detail = n8n_get_json(detail_req)
+            except (TimeoutError, urllib.error.URLError, OSError):
+                print(f"n8n execution {eid} timed out")
+                continue
+            run_data = ((detail.get("data") or {}).get("resultData") or {}).get("runData") or {}
         if seen is not None:
             seen.add(eid)
-        for payload in iter_execution_jsons(detail):
+        if AUTH_CODE_NODE not in run_data:
+            continue
+        for payload in iter_execution_jsons(detail, AUTH_CODE_NODE):
             found = parse_gcloud_auth_code(payload)
             if found:
                 return found

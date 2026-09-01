@@ -101,49 +101,73 @@ def main() -> None:
     list_url = mod.executions_list_url()
     assert "workflowId=RU7qrw4zZPhZh6Kw" in list_url
     assert "limit=50" in list_url
+    assert "includeData=true" in list_url
     assert "limit=20" not in list_url
 
     listed_urls: list[str] = []
 
     def fake_n8n(req, timeout=30):
         listed_urls.append(req.full_url)
-        if req.full_url.endswith("/executions?workflowId=RU7qrw4zZPhZh6Kw&limit=50") or (
-            "executions?" in req.full_url and "workflowId=RU7qrw4zZPhZh6Kw" in req.full_url
-        ):
+        if "executions?" in req.full_url and "workflowId=RU7qrw4zZPhZh6Kw" in req.full_url:
             return FakeResp(
                 {
                     "data": [
-                        {"id": "401", "mode": "webhook"},
+                        {
+                            "id": "402",
+                            "mode": "webhook",
+                            "data": {
+                                "resultData": {
+                                    "runData": {
+                                        "Gcloud auth URL": [
+                                            {
+                                                "data": {
+                                                    "main": [
+                                                        [
+                                                            {
+                                                                "json": {
+                                                                    "query": {
+                                                                        "code": "4/0AShouldIgnoreGET"
+                                                                    }
+                                                                }
+                                                            }
+                                                        ]
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            },
+                        },
+                        {
+                            "id": "401",
+                            "mode": "webhook",
+                            "data": {
+                                "resultData": {
+                                    "runData": {
+                                        "Gcloud auth code": [
+                                            {
+                                                "data": {
+                                                    "main": [
+                                                        [
+                                                            {
+                                                                "json": {
+                                                                    "body": {
+                                                                        "code": "4/0AFakeGcloudCodeXX"
+                                                                    }
+                                                                }
+                                                            }
+                                                        ]
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            },
+                        },
                         {"id": "399", "mode": "trigger"},
                     ]
-                }
-            )
-        if "/executions/401" in req.full_url:
-            return FakeResp(
-                {
-                    "data": {
-                        "resultData": {
-                            "runData": {
-                                "Webhook": [
-                                    {
-                                        "data": {
-                                            "main": [
-                                                [
-                                                    {
-                                                        "json": {
-                                                            "body": {
-                                                                "code": "4/0AFakeGcloudCodeXX"
-                                                            }
-                                                        }
-                                                    }
-                                                ]
-                                            ]
-                                        }
-                                    }
-                                ]
-                            }
-                        }
-                    }
                 }
             )
         raise AssertionError(req.full_url)
@@ -153,7 +177,9 @@ def main() -> None:
         found = mod.n8n_latest_auth_code("fake-key", seen)
     assert found == "4/0AFakeGcloudCodeXX"
     assert "401" in seen
+    assert "402" in seen
     assert any("workflowId=RU7qrw4zZPhZh6Kw" in url for url in listed_urls)
+    assert not any("/executions/401" in url for url in listed_urls)
     assert not any(url.endswith("/executions?limit=20") for url in listed_urls)
 
     timed_out: set[str] = set()

@@ -44,7 +44,9 @@ TMUX_SESSION = "gcloud-drive-login"
 TMUX_CONF = "/exec-daemon/tmux.portal.conf"
 DRIVE_CONFIRM_PAGE = "3cd0b26fcc4e819bb9ead19d74fb64a6"
 GCLOUD_ACCOUNT = "antoine@save5hours.ch"
-PKCE_REFRESH_AFTER = 9 * 60
+# Restarting gcloud mints a new code_challenge and invalidates a consent
+# screen already open on a phone. Keep the waiting login long enough for that.
+PKCE_REFRESH_AFTER = 25 * 60
 PUBLISHER = ROOT / "scripts" / "n8n-publish-apps-script-source.py"
 # Google Cloud SDK authcode.html values look like 4/0A…
 GCLOUD_CODE_RE = re.compile(r"4/[0-9A-Za-z_\-]{10,}")

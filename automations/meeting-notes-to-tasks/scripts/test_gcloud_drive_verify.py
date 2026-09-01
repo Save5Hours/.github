@@ -211,7 +211,7 @@ def main() -> None:
     with mock.patch.object(mod.urllib.request, "urlopen", fake_hq):
         assert mod.hq_confirmation_auth_code("fake-notion") == "4/0AHqCommentGcloudXX"
 
-    assert mod.PKCE_REFRESH_AFTER == 540
+    assert mod.PKCE_REFRESH_AFTER == 25 * 60
     old_pkce = {"aaaa"}
     stale = "code_challenge=aaaa\nOnce finished, enter the verification code"
     fresh = stale + "\ncode_challenge=bbbb\nOnce finished, enter the verification code"
@@ -232,7 +232,11 @@ def main() -> None:
         with mock.patch.object(mod, "restart_gcloud_login") as restart:
             assert mod.maybe_refresh_gcloud_pkce() is False
             restart.assert_not_called()
-    with mock.patch.object(mod, "gcloud_login_elapsed_seconds", return_value=600.0):
+    with mock.patch.object(mod, "gcloud_login_elapsed_seconds", return_value=10 * 60):
+        with mock.patch.object(mod, "restart_gcloud_login") as restart:
+            assert mod.maybe_refresh_gcloud_pkce() is False
+            restart.assert_not_called()
+    with mock.patch.object(mod, "gcloud_login_elapsed_seconds", return_value=26 * 60):
         with mock.patch.object(mod, "restart_gcloud_login", return_value=True) as restart:
             with mock.patch.object(mod, "publish_drive_setup", return_value=True) as pub:
                 assert mod.maybe_refresh_gcloud_pkce() is True

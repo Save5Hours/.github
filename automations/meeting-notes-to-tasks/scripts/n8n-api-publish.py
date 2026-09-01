@@ -223,7 +223,7 @@ def main() -> int:
     env = load_dotenv()
     rail = railway_vars()
     base = env.get("N8N_URL") or "https://n8n-production-192e.up.railway.app"
-    api_key = env.get("N8N_API_KEY") or ""
+    api_key = env.get("N8N_API_KEY") or rail.get("N8N_API_KEY") or ""
     notion = env.get("NOTION_API_KEY") or rail.get("NOTION_API_KEY") or ""
     openrouter = env.get("OPENROUTER_API_KEY") or rail.get("OPENROUTER_API_KEY") or ""
     webhook = rail.get("N8N_WEBHOOK_SECRET") or env.get("N8N_WEBHOOK_SECRET") or ""
@@ -248,7 +248,7 @@ def main() -> int:
     print(f"  GEMINI_NOTES_FOLDER_ID: {'yes' if folder else 'NO (Drive triggers disabled)'}")
     print(f"  GOOGLE_OAUTH_CLIENT_ID: {'yes' if google_id else 'NO'}")
     if not api_key:
-        print("blocked: N8N_API_KEY missing from .env")
+        print("blocked: N8N_API_KEY missing from .env and Railway")
         return 1
     if not notion or not openrouter or not webhook:
         print("blocked: Notion, OpenRouter, or webhook secret missing")

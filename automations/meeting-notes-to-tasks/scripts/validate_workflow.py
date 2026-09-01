@@ -107,5 +107,7 @@ assert folder == "REPLACE_ME_GEMINI_NOTES_FOLDER_ID"
 folder_updated = nodes["Google Drive Trigger (updated)"]["parameters"]["folderToWatch"]["value"]
 assert folder_updated == "REPLACE_ME_GEMINI_NOTES_FOLDER_ID"
 
-print(f"ok: {len(nodes)} nodes, {len(conns)} connection sources, {path}")
+if len(nodes) > 32:
+    raise SystemExit(f"workflow grew too large ({len(nodes)} nodes); keep the simple graph")
+
 sys.exit(0)

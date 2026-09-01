@@ -31,6 +31,7 @@ jobs:
           python3 scripts/test_apps_script.py
           python3 -m py_compile scripts/n8n-check-and-dry-run.py
           python3 -m py_compile scripts/n8n-api-publish.py
+          python3 -m py_compile scripts/n8n-ssh-publish.py
           python3 -m py_compile scripts/drive_ids.py
           node --check scripts/n8n-provision.mjs
           node --check scripts/apps-script-drive-webhook.js

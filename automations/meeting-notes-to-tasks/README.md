@@ -13,6 +13,8 @@ Google Meet ends
 **Live n8n (1.123.75):** [https://n8n-production-192e.up.railway.app/](https://n8n-production-192e.up.railway.app/)  
 Account: `deevlylabs@gmail.com`. OpenRouter and Notion already work.
 
+The live canvas is still the old workaround graph until someone overwrites it. Prefer `python3 scripts/n8n-ssh-publish.py` (needs Railway login) or, in the **open** workflow editor only: ⋮ → **Import from URL** → this JSON. Do not import from the workflow list (that creates a duplicate with the same webhooks).
+
 Self-hosted n8n has **no** Google Sign-in button (that exists only on n8n Cloud). Do **not** use Drive-setup, Colab, gcloud codes, or bookmarklets.
 
 ## Connect Google without Cloud Console (do this)
@@ -45,7 +47,11 @@ Service accounts are a worse fit here (no My Drive quota; Drive Trigger wants OA
 
 ## Import this cleaned workflow
 
-The live instance may still have the old 50-node workaround graph. After this PR is on the branch, import `n8n/meeting-notes-to-tasks.json` (Workflows → Import from File) and map:
+Overwrite the **open** workflow (not a new copy). ⋮ → **Import from URL**:
+
+`https://raw.githubusercontent.com/Save5Hours/.github/cursor/fix-drive-notion-automation-007c/automations/meeting-notes-to-tasks/n8n/meeting-notes-to-tasks.json`
+
+Map existing credentials:
 
 - `Google Drive (Save 5 Hours)`
 - `Notion (Save 5 Hours HQ)`

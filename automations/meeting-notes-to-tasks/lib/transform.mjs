@@ -63,7 +63,8 @@ export function parseDriveFileId(text) {
     || raw.match(/docs\.google\.com\/open\?id=([a-zA-Z0-9_-]{10,})/i)
     || raw.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]{10,})/i)
     || raw.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]{10,})/i)
-    || raw.match(/FILE_ID\s+([a-zA-Z0-9_-]{10,})/i);
+    || raw.match(/FILE_ID\s+([a-zA-Z0-9_-]{10,})/i)
+    || raw.match(/(?:^|[?&\s])(?:fileId|id)=([a-zA-Z0-9_-]{10,})/i);
   if (doc) return acceptDriveId(doc[1], true);
   for (const part of raw.split(/[\s,;]+/)) {
     const found = acceptDriveId(part.trim(), false);
@@ -85,13 +86,25 @@ export function extractPublicDrivePayload(src) {
   let body = {};
   if (root.body && typeof root.body === 'object' && !Array.isArray(root.body)) {
     body = root.body;
-  } else if (typeof root.body === 'string' && root.body.trim().startsWith('{')) {
-    try {
-      const parsed = JSON.parse(root.body);
-      if (parsed && typeof parsed === 'object') body = parsed;
-    } catch {
-      body = {};
+  } else if (typeof root.body === 'string') {
+    const raw = root.body.trim();
+    if (raw.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') body = parsed;
+      } catch {
+        body = {};
+      }
+    } else if (raw.includes('=')) {
+      try {
+        body = Object.fromEntries(new URLSearchParams(raw));
+      } catch {
+        body = {};
+      }
     }
+  }
+  if (body.data && typeof body.data === 'object' && !Array.isArray(body.data)) {
+    body = { ...body.data, ...body };
   }
   const query = root.query && typeof root.query === 'object' ? root.query : {};
   const layers = [body, query, root];

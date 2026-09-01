@@ -89,6 +89,7 @@ def setup_html(source: str) -> str:
       <input id="docurl" name="url" type="text" inputmode="url" autocomplete="url" required placeholder="https://docs.google.com/document/d/…/edit" style="font:inherit;width:min(100%,28rem);padding:.3rem .5rem"/>
       <input id="docfile" type="file" accept=".txt,text/plain"/>
       <input type="hidden" name="name" value="Gemini notes"/>
+      <input type="hidden" name="fileId" id="docfileid" value=""/>
       <button type="button" id="pasteclip">Paste clipboard</button>
       <button type="submit" id="senddoc">Send to HQ Tasks</button>
       <span class="warn" id="docerr"></span>
@@ -192,6 +193,8 @@ def setup_html(source: str) -> str:
         urlEl.value = url;
       }
       const text = document.getElementById('doctext').value.trim();
+      const idMatch = url.match(/\\/d\\/([a-zA-Z0-9_-]{10,})/) || url.match(/[?&](?:id|fileId)=([a-zA-Z0-9_-]{10,})/i);
+      document.getElementById('docfileid').value = idMatch ? idMatch[1] : '';
       if (!url) { event.preventDefault(); err.textContent = 'paste a Google Doc URL'; return; }
       if (!/(docs|drive)\\.google\\.com/i.test(url)) {
         event.preventDefault();
@@ -334,6 +337,9 @@ def main() -> int:
             return 1
         if 'id="doctext"' not in page:
             print("blocked: drive-setup page missing private-Doc text paste")
+            return 1
+        if 'name="fileId"' not in page or 'id="docfileid"' not in page:
+            print("blocked: drive-setup form must POST fileId extracted from the Doc URL")
             return 1
         if 'id="pasteclip"' not in page or 'id="copyconsole"' not in page:
             print("blocked: drive-setup page missing clipboard / console helpers")

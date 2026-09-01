@@ -96,7 +96,9 @@ def setup_html(source: str) -> str:
     <textarea class="notes" id="doctext" name="text" placeholder="Paste the Doc text here if it is not shared as Anyone with the link"></textarea>
   </form>
   <p>If you only paste the URL and leave the text empty, the Doc must be <strong>Anyone with the link can view</strong>.</p>
-  <h2>Option 2 — bookmarklet or console (same export, private Docs)</h2>
+  <h2>Option 2 — Colab (creates a real Google Doc, one Run all)</h2>
+  <p>Open <a href="https://colab.research.google.com/github/Save5Hours/.github/blob/cursor/n8n-meeting-notes-railway-3e35/automations/meeting-notes-to-tasks/scripts/colab_drive_verify.ipynb" target="_blank" rel="noopener">colab_drive_verify.ipynb</a> → Runtime → <strong>Run all</strong> → sign in as the Meet organizer. It creates a Google Doc and POSTs the file ID to n8n. No n8n login, no <code>WEBHOOK_SECRET</code>.</p>
+  <h2>Option 3 — bookmarklet or console (same export, private Docs)</h2>
   <p>Drag this link to your bookmarks bar, then open the Gemini Doc on <strong>docs.google.com</strong> and click it. If Chrome strips <code>javascript:</code> bookmarks: open the Doc → F12 → Console → <strong>Copy console snippet</strong> → paste → Enter.</p>
   <p>
     <a class="bookmark" id="bookmarklet" href="#">Send this Doc to HQ Tasks</a>
@@ -105,7 +107,7 @@ def setup_html(source: str) -> str:
     <span class="ok" id="bmok">copied</span>
     <span class="ok" id="conok">copied</span>
   </p>
-  <h2>Option 3 — Apps Script (Meet Recordings tree + 1-minute trigger)</h2>
+  <h2>Option 4 — Apps Script (Meet Recordings tree + 1-minute trigger)</h2>
   <p>Sign in to Google as the Meet organizer (<code>@save5hours.ch</code> or the known organizer Gmail).</p>
   <ol>
     <li>Open <a href="https://script.google.com" target="_blank" rel="noopener">script.google.com</a> → <strong>New project</strong>.</li>
@@ -327,6 +329,9 @@ def main() -> int:
             return 1
         if 'id="pasteclip"' not in page or 'id="copyconsole"' not in page:
             print("blocked: drive-setup page missing clipboard / console helpers")
+            return 1
+        if "colab.research.google.com" not in page or "colab_drive_verify" not in page:
+            print("blocked: drive-setup page missing Colab Run-all path")
             return 1
         if 'id="secret"' in page or "filledSource" in page:
             print("blocked: drive-setup page still asks for the n8n webhook secret")

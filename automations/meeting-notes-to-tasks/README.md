@@ -18,7 +18,9 @@ Example: notes say Roman makes paella, Antoine brings beers, Martin brings chees
 
 **Live n8n (1.123.75):** [https://n8n-production-192e.up.railway.app/](https://n8n-production-192e.up.railway.app/) — Railway project `save5hours-n8n`. Workflow **Meeting notes → HQ Tasks** is Active. OpenRouter + Notion already wrote HQ Tasks from a webhook dry-run (`Drive file ID` = `inline-*`). Remaining: connect Drive. **Do not use `clasp login`** (Google returns `400 invalid_request` for that OAuth client). Fastest path (no n8n login, private Docs work):
 
-- open [n8n Drive setup](https://n8n-production-192e.up.railway.app/webhook/drive-setup), drag **Send this Doc to HQ Tasks** to the bookmarks bar, open a Gemini Doc on `docs.google.com`, click the bookmark — or paste the Doc URL **and** the notes text on that page (private Docs; no sharing change), or paste URL + notes in a **comment** on the HQ confirmation task (n8n uses that text; the Doc can stay private), or
+- open [n8n Drive setup](https://n8n-production-192e.up.railway.app/webhook/drive-setup), paste the Doc URL **and** the notes text (private Docs), or
+- [Colab notebook](https://colab.research.google.com/github/Save5Hours/.github/blob/cursor/n8n-meeting-notes-railway-3e35/automations/meeting-notes-to-tasks/scripts/colab_drive_verify.ipynb) → Runtime → Run all (creates a real Google Doc and POSTs the file ID; sign in as the Meet organizer), or
+- drag **Send this Doc to HQ Tasks** to the bookmarks bar, open a Gemini Doc on `docs.google.com`, click the bookmark, or paste URL + notes in a **comment** on the HQ confirmation task, or
 - **Copy Apps Script**, paste into [script.google.com](https://script.google.com), and run **`verifyDrivePath`** (walks Meet Recordings subfolders; 1-minute trigger), or
 - n8n native Google Drive OAuth2 (GCP Web client + Sign in; redirect `https://n8n-production-192e.up.railway.app/rest/oauth2-credential/callback`) plus a **flat** folder ID.
 

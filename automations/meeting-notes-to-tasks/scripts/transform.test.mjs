@@ -45,6 +45,8 @@ test('Apps Script VERIFY_NOTES matches drive-verify fixture', () => {
   assert.match(src, /ScriptApp\.getOAuthToken/);
   assert.match(src, /meeting-notes-drive/);
   assert.match(src, /googleAccessToken/);
+  assert.match(src, /not registered/i);
+  assert.match(src, /Utilities\.sleep/);
   for (const line of notes.split('\n').filter(Boolean)) {
     assert.ok(src.includes(line), line);
   }

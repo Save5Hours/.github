@@ -35,6 +35,7 @@ jobs:
           python3 -m py_compile scripts/n8n-publish-apps-script-source.py
           python3 -m py_compile scripts/clasp-drive-verify.py
           node --check scripts/n8n-provision.mjs
+          node --check scripts/apps-script-drive-webhook.js
           git diff --exit-code n8n/meeting-notes-to-tasks.json
       - name: Transform unit tests (paella → three assignees)
         working-directory: automations/meeting-notes-to-tasks

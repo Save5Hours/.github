@@ -81,7 +81,7 @@ def setup_html(source: str) -> str:
 </head>
 <body>
   <h1>Connect Gemini Drive notes</h1>
-  <p>n8n already writes HQ Tasks from OpenRouter. You do <strong>not</strong> need an n8n login. Chrome often blocks <code>javascript:</code> bookmarks, so <strong>paste URL + notes is the reliable path</strong>.</p>
+  <p>n8n already writes HQ Tasks from OpenRouter. You do <strong>not</strong> need an n8n login. Chrome often blocks <code>javascript:</code> bookmarks, so <strong>paste URL + notes is the reliable path</strong>. If Apps Script logs HTTP 404, wait a minute and Run <strong>verifyDrivePath</strong> again (the script now retries while n8n finishes booting).</p>
   <h2>Option 1 — paste URL + notes (private Docs work)</h2>
   <p>In the Gemini Doc: copy the URL, then <strong>Ctrl+A / Ctrl+C</strong> (or File → Download → Plain text). Paste both here, or use <strong>Paste clipboard</strong>. n8n keeps that Drive file ID. Sharing can stay private. After send you should see <strong>Received</strong> and the Drive file ID — not a blank page.</p>
   <form id="docform" method="POST" action="/webhook/public-drive-doc" accept-charset="UTF-8">
@@ -259,12 +259,18 @@ def main() -> int:
     if "meeting-notes-drive" not in source or "ScriptApp.getOAuthToken" not in source:
         print("blocked: Apps Script source missing Drive Google-token path")
         return 1
+    if "Utilities.sleep" not in source or "not registered" not in source:
+        print("blocked: Apps Script source missing webhook retry")
+        return 1
     payload = workflow_payload(source)
     code, listed = request(api_key, "GET", "/api/v1/workflows")
     workflows = listed.get("data") if isinstance(listed, dict) else []
     existing = next((w for w in (workflows or []) if w.get("name") == WF_NAME), None)
     if existing:
         wf_id = existing["id"]
+        if existing.get("active"):
+            code, body = request(api_key, "POST", f"/api/v1/workflows/{wf_id}/deactivate")
+            print(f"deactivate {wf_id} status={code}")
         code, body = request(api_key, "PUT", f"/api/v1/workflows/{wf_id}", payload)
         print(f"update {wf_id} status={code}")
     else:

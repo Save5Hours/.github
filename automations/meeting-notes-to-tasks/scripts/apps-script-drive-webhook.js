@@ -134,21 +134,39 @@ function postNote_(webhookUrl, secret, file, text) {
   const headers = { Authorization: "Bearer " + token };
   const pasted = String(secret || "").trim();
   if (pasted) headers["X-Webhook-Secret"] = pasted;
-  const response = UrlFetchApp.fetch(webhookUrl, {
-    method: "post",
-    contentType: "application/json",
-    headers: headers,
-    payload: JSON.stringify({
-      fileId: file.getId(),
-      name: file.getName(),
-      mimeType: file.getMimeType(),
-      webViewLink: file.getUrl(),
-      text: text,
-      googleAccessToken: token,
-    }),
-    muteHttpExceptions: true,
+  const payload = JSON.stringify({
+    fileId: file.getId(),
+    name: file.getName(),
+    mimeType: file.getMimeType(),
+    webViewLink: file.getUrl(),
+    text: text,
+    googleAccessToken: token,
   });
-  return response.getResponseCode();
+  // n8n may return 404 "webhook is not registered" for a few seconds after a
+  // Railway restart (CLI activate used to target the template id, not live).
+  var attempts = 0;
+  var code = 0;
+  while (attempts < 6) {
+    attempts++;
+    const response = UrlFetchApp.fetch(webhookUrl, {
+      method: "post",
+      contentType: "application/json",
+      headers: headers,
+      payload: payload,
+      muteHttpExceptions: true,
+    });
+    code = response.getResponseCode();
+    const body = String(response.getContentText() || "");
+    if (code >= 200 && code < 300) return code;
+    const retryable =
+      code === 404 ||
+      code === 502 ||
+      code === 503 ||
+      /not registered/i.test(body);
+    if (!retryable || attempts >= 6) return code;
+    Utilities.sleep(10000);
+  }
+  return code;
 }
 
 function ensureFolder_(props) {

@@ -73,27 +73,61 @@ function encryptCredentialData(data) {
   return Buffer.concat([header, salt, encrypted]).toString('base64');
 }
 
-function upsertCredentials(database, credsList, project) {
+function credentialIdsFromWorkflow(database, workflowId) {
+  if (!database || !workflowId) return {};
+  try {
+    const row = database.prepare('SELECT nodes FROM workflow_entity WHERE id = ?').get(workflowId);
+    const nodes = JSON.parse(row?.nodes || '[]');
+    const ids = {};
+    for (const node of nodes) {
+      for (const spec of Object.values(node.credentials || {})) {
+        const name = String(spec?.name || '');
+        if (name && spec.id) ids[name] = spec.id;
+      }
+    }
+    return ids;
+  } catch {
+    return {};
+  }
+}
+
+function retargetWorkflowCreds(nodes, idByName) {
+  for (const node of nodes) {
+    for (const spec of Object.values(node.credentials || {})) {
+      const liveId = idByName[String(spec?.name || '')];
+      if (liveId) spec.id = liveId;
+    }
+  }
+  return nodes;
+}
+
+function upsertCredentials(database, credsList, project, preferredIds = {}) {
   if (!database || !credsList.length) return;
   const now = new Date().toISOString().replace('T', ' ').replace('Z', '');
   for (const cred of credsList) {
-    database.prepare('DELETE FROM shared_credentials WHERE credentialsId = ?').run(cred.id);
-    database.prepare('DELETE FROM credentials_entity WHERE id = ? OR (name = ? AND type = ?)').run(
-      cred.id,
-      cred.name,
-      cred.type,
-    );
+    const named = database.prepare(
+      'SELECT id FROM credentials_entity WHERE name = ? AND type = ? LIMIT 1',
+    ).get(cred.name, cred.type);
+    const keepId = preferredIds[cred.name] || named?.id || cred.id;
+    const encrypted = encryptCredentialData(cred.data);
+    const row = database.prepare('SELECT id FROM credentials_entity WHERE id = ?').get(keepId);
+    if (row) {
+      database.prepare(
+        'UPDATE credentials_entity SET data = ?, updatedAt = ? WHERE id = ?',
+      ).run(encrypted, now, keepId);
+      continue;
+    }
     database.prepare(
       `INSERT INTO credentials_entity
         (id, name, data, type, createdAt, updatedAt, isManaged, isGlobal)
        VALUES (?, ?, ?, ?, ?, ?, 0, 0)`,
-    ).run(cred.id, cred.name, encryptCredentialData(cred.data), cred.type, now, now);
+    ).run(keepId, cred.name, encrypted, cred.type, now, now);
     if (project) {
       database.prepare(
         `INSERT OR IGNORE INTO shared_credentials
           (credentialsId, projectId, role, createdAt, updatedAt)
          VALUES (?, ?, 'credential:owner', ?, ?)`,
-      ).run(cred.id, project, now, now);
+      ).run(keepId, project, now, now);
     }
   }
   try {
@@ -220,9 +254,11 @@ function importWorkflow() {
 function existingWorkflow(database) {
   if (!database) return null;
   try {
-    return database.prepare(
-      'SELECT id FROM workflow_entity WHERE id = ? OR name = ? LIMIT 1',
-    ).get(WF_ID, WF_NAME);
+    const byName = database.prepare(
+      'SELECT id FROM workflow_entity WHERE name = ? ORDER BY active DESC LIMIT 1',
+    ).get(WF_NAME);
+    if (byName?.id) return byName;
+    return database.prepare('SELECT id FROM workflow_entity WHERE id = ? LIMIT 1').get(WF_ID);
   } catch {
     return null;
   }
@@ -246,8 +282,10 @@ if (!existingWorkflow(db)) {
 }
 
 const live = existingWorkflow(db);
+const liveCredIds = live && db ? credentialIdsFromWorkflow(db, live.id) : {};
 if (live && db) {
   try {
+    retargetWorkflowCreds(workflow.nodes, liveCredIds);
     db.prepare(
       `UPDATE workflow_entity
        SET nodes = ?, connections = ?, versionId = ?, updatedAt = datetime('now')
@@ -315,7 +353,7 @@ if (envPresent('GOOGLE_OAUTH_CLIENT_ID') && envPresent('GOOGLE_OAUTH_CLIENT_SECR
 
 if (creds.length) {
   try {
-    upsertCredentials(db, creds, projectId);
+    upsertCredentials(db, creds, projectId, liveCredIds);
     console.log(`save5hours: wrote credentials (${creds.map((c) => c.name).join(', ')})`);
   } catch (error) {
     console.error('save5hours: credential write failed; paste them in the n8n Credentials UI', error.message);
@@ -327,6 +365,7 @@ closeDb();
 const canActivate = envPresent('OPENROUTER_API_KEY') && envPresent('NOTION_API_KEY')
   && process.env.N8N_ACTIVATE_WORKFLOW === 'true';
 if (canActivate) {
-  console.log('save5hours: activating workflow');
-  run(['n8n', 'update:workflow', '--id', WF_ID, '--active', 'true']);
+  const activateId = live?.id || WF_ID;
+  console.log('save5hours: activating workflow', activateId);
+  run(['n8n', 'update:workflow', '--id', activateId, '--active', 'true']);
 }

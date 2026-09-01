@@ -23,6 +23,8 @@ def main() -> None:
     assert not is_real_drive_id("inline-15616df3")
     assert is_real_drive_id("1DriveVerifyFileIdNotInline")
     assert parse_drive_refs("1BareFileIdFromHqTask")["file_id"] == "1BareFileIdFromHqTask"
+    assert parse_drive_refs("apps-script-source")["file_id"] == ""
+    assert parse_drive_refs("drive-setup")["file_id"] == ""
     print("drive id parse ok")
 
 

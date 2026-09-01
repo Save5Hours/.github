@@ -15,12 +15,30 @@ DOC_RE = re.compile(
     r"([a-zA-Z0-9_-]{10,})",
     re.I,
 )
-BARE_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{10,}$")
+BARE_ID_RE = re.compile(r"^[0-9][a-zA-Z0-9_-]{19,}$")
+FALSE_FILE_IDS = {
+    "apps-script-source",
+    "drive-setup",
+    "meeting-notes",
+    "public-drive-doc",
+    "meeting-notes-drive",
+}
 
 
 def is_real_drive_id(value: str) -> bool:
     text = (value or "").strip()
-    return bool(text) and not text.lower().startswith("inline-") and text.upper() != "REPLACE_ME_GEMINI_NOTES_FOLDER_ID"
+    if not text or text.lower().startswith("inline-"):
+        return False
+    if text.upper() == "REPLACE_ME_GEMINI_NOTES_FOLDER_ID":
+        return False
+    if text.lower() in FALSE_FILE_IDS:
+        return False
+    return True
+
+
+def is_bare_google_id(value: str) -> bool:
+    text = (value or "").strip()
+    return bool(BARE_ID_RE.match(text) and is_real_drive_id(text))
 
 
 def folder_id_from(text: str) -> str:
@@ -49,7 +67,7 @@ def parse_drive_refs(*parts: str) -> dict[str, str]:
             continue
         if folder_id_from(raw) or file_id_from(raw):
             continue
-        if BARE_ID_RE.match(raw) and is_real_drive_id(raw):
+        if is_bare_google_id(raw):
             if not file_id:
                 file_id = raw
     return {"folder_id": folder, "file_id": file_id}

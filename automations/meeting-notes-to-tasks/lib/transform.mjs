@@ -44,10 +44,23 @@ export function parseDriveFileId(text) {
     || raw.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]{10,})/i)
     || raw.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]{10,})/i)
     || raw.match(/FILE_ID\s+([a-zA-Z0-9_-]{10,})/i);
+  const fromUrl = Boolean(doc);
   const candidate = doc ? doc[1] : raw.trim();
   if (!candidate || candidate.toLowerCase().startsWith('inline-')) return '';
-  if (!/^[a-zA-Z0-9_-]{10,}$/.test(candidate)) return '';
   if (candidate.toUpperCase() === 'REPLACE_ME_GEMINI_NOTES_FOLDER_ID') return '';
+  const blocked = new Set([
+    'apps-script-source',
+    'drive-setup',
+    'meeting-notes',
+    'public-drive-doc',
+    'meeting-notes-drive',
+  ]);
+  if (blocked.has(candidate.toLowerCase())) return '';
+  if (fromUrl) {
+    if (!/^[a-zA-Z0-9_-]{10,}$/.test(candidate)) return '';
+    return candidate;
+  }
+  if (!/^[0-9][a-zA-Z0-9_-]{19,}$/.test(candidate)) return '';
   return candidate;
 }
 

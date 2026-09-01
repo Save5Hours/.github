@@ -65,6 +65,8 @@ test('parseDriveFileId reads Google Doc URLs and rejects inline ids', () => {
   );
   assert.equal(parseDriveFileId('inline-15616df3'), '');
   assert.equal(parseDriveFileId('1BareFileIdFromHqTask'), '1BareFileIdFromHqTask');
+  assert.equal(parseDriveFileId('apps-script-source'), '');
+  assert.equal(parseDriveFileId('drive-setup'), '');
 });
 
 test('extractPublicDrivePayload reads n8n form POST with fileId + text', () => {

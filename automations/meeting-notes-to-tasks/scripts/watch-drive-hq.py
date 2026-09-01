@@ -94,7 +94,6 @@ def plain(prop: dict | None) -> str:
 
 
 def hq_confirm_refs(token: str) -> dict[str, str]:
-    blobs: list[str] = []
     req = urllib.request.Request(
         f"https://api.notion.com/v1/pages/{DRIVE_CONFIRM_PAGE}",
         headers=notion_headers(token),
@@ -103,11 +102,24 @@ def hq_confirm_refs(token: str) -> dict[str, str]:
     with urllib.request.urlopen(req, timeout=30) as resp:
         page = json.loads(resp.read().decode("utf-8"))
     props = page.get("properties") or {}
-    blobs.append(plain(props.get("Drive URL")))
-    blobs.append(plain(props.get("Drive file ID")))
+    blobs = [
+        plain(props.get("Drive URL")),
+        plain(props.get("Drive file ID")),
+        *notion_page_blobs(token, DRIVE_CONFIRM_PAGE),
+    ]
+    refs = parse_drive_refs(*blobs)
+    refs["drive_url"] = plain(props.get("Drive URL"))
+    refs["drive_file_id_prop"] = plain(props.get("Drive file ID"))
+    return refs
+
+
+def notion_page_blobs(token: str, page_id: str) -> list[str]:
+    """Page body + comments (no secrets printed)."""
+    blobs: list[str] = []
+    pid = (page_id or "").replace("-", "")
     try:
         req = urllib.request.Request(
-            f"https://api.notion.com/v1/blocks/{DRIVE_CONFIRM_PAGE}/children?page_size=100",
+            f"https://api.notion.com/v1/blocks/{pid}/children?page_size=100",
             headers=notion_headers(token),
             method="GET",
         )
@@ -124,7 +136,7 @@ def hq_confirm_refs(token: str) -> dict[str, str]:
         pass
     try:
         req = urllib.request.Request(
-            f"https://api.notion.com/v1/comments?block_id={DRIVE_CONFIRM_PAGE}",
+            f"https://api.notion.com/v1/comments?block_id={pid}",
             headers=notion_headers(token),
             method="GET",
         )
@@ -133,32 +145,16 @@ def hq_confirm_refs(token: str) -> dict[str, str]:
         for row in comments.get("results") or []:
             rich = row.get("rich_text") or []
             blobs.append("".join(span.get("plain_text") or "" for span in rich))
+            for span in rich:
+                blobs.append(span.get("href") or "")
     except urllib.error.HTTPError:
         pass
-    refs = parse_drive_refs(*blobs)
-    refs["drive_url"] = plain(props.get("Drive URL"))
-    refs["drive_file_id_prop"] = plain(props.get("Drive file ID"))
-    return refs
+    return blobs
 
 
 def hq_task_drive_refs(token: str) -> list[dict[str, str]]:
-    """Any HQ Task with a Drive URL or a non-inline Drive file ID."""
-    body = json.dumps(
-        {
-            "filter": {
-                "or": [
-                    {"property": "Drive URL", "url": {"is_not_empty": True}},
-                    {
-                        "and": [
-                            {"property": "Drive file ID", "rich_text": {"is_not_empty": True}},
-                            {"property": "Drive file ID", "rich_text": {"does_not_contain": "inline-"}},
-                        ]
-                    },
-                ]
-            },
-            "page_size": 20,
-        }
-    ).encode("utf-8")
+    """Any HQ Task whose properties, body, or comments mention a Drive Doc."""
+    body = json.dumps({"page_size": 100}).encode("utf-8")
     req = urllib.request.Request(
         f"https://api.notion.com/v1/databases/{TASKS_DB}/query",
         data=body,
@@ -170,7 +166,13 @@ def hq_task_drive_refs(token: str) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     for page in data.get("results") or []:
         props = page.get("properties") or {}
-        refs = parse_drive_refs(plain(props.get("Drive URL")), plain(props.get("Drive file ID")))
+        page_id = str(page.get("id") or "")
+        blobs = [
+            plain(props.get("Drive URL")),
+            plain(props.get("Drive file ID")),
+            *notion_page_blobs(token, page_id),
+        ]
+        refs = parse_drive_refs(*blobs)
         refs["name"] = plain(props.get("Name"))
         refs["page"] = page.get("url") or ""
         if refs.get("file_id") or refs.get("folder_id"):

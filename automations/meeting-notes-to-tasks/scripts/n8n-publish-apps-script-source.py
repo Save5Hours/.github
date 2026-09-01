@@ -97,7 +97,8 @@ def setup_html(source: str) -> str:
   </form>
   <p>If you only paste the URL and leave the text empty, the Doc must be <strong>Anyone with the link can view</strong>.</p>
   <h2>Option 2 — Colab (creates a real Google Doc, one Run all)</h2>
-  <p>Open <a href="https://colab.research.google.com/github/Save5Hours/.github/blob/cursor/n8n-meeting-notes-railway-3e35/automations/meeting-notes-to-tasks/scripts/colab_drive_verify.ipynb" target="_blank" rel="noopener">colab_drive_verify.ipynb</a> → Runtime → <strong>Run all</strong> → sign in as the Meet organizer. It creates a Google Doc and POSTs the file ID to n8n. No n8n login, no <code>WEBHOOK_SECRET</code>.</p>
+  <p>Signed in as the Meet organizer: <a class="bookmark" href="https://colab.research.google.com/github/Save5Hours/.github/blob/cursor/n8n-meeting-notes-railway-3e35/automations/meeting-notes-to-tasks/scripts/colab_drive_verify.ipynb" target="_blank" rel="noopener">Open Colab — Run all</a></p>
+  <p>Runtime → <strong>Run all</strong> → Google sign-in. It creates a Google Doc and POSTs <code>fileId</code> + notes to <code>/webhook/public-drive-doc</code> (no n8n login, no <code>WEBHOOK_SECRET</code>). HQ Tasks should then show a Drive file ID that is not <code>inline-*</code>.</p>
   <h2>Option 3 — bookmarklet or console (same export, private Docs)</h2>
   <p>Drag this link to your bookmarks bar, then open the Gemini Doc on <strong>docs.google.com</strong> and click it. If Chrome strips <code>javascript:</code> bookmarks: open the Doc → F12 → Console → <strong>Copy console snippet</strong> → paste → Enter.</p>
   <p>
@@ -332,6 +333,9 @@ def main() -> int:
             return 1
         if "colab.research.google.com" not in page or "colab_drive_verify" not in page:
             print("blocked: drive-setup page missing Colab Run-all path")
+            return 1
+        if "Open Colab" not in page or "public-drive-doc" not in page:
+            print("blocked: drive-setup Colab path must POST public-drive-doc")
             return 1
         if 'id="secret"' in page or "filledSource" in page:
             print("blocked: drive-setup page still asks for the n8n webhook secret")

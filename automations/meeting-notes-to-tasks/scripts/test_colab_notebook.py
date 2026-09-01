@@ -13,10 +13,14 @@ NB = ROOT / "scripts" / "colab_drive_verify.ipynb"
 def main() -> None:
     nb = json.loads(NB.read_text(encoding="utf-8"))
     src = "".join(nb["cells"][1]["source"])
+    md = "".join(nb["cells"][0]["source"])
     assert "meeting-notes-drive" in src
+    assert "public-drive-doc" in src
+    assert "MediaInMemoryUpload" in src
     assert "googleAccessToken" in src
     assert "Antoine will publish the Drive webhook runbook" in src
     assert "WEBHOOK_SECRET" not in src
+    assert "You do **not** need an n8n login or `WEBHOOK_SECRET`" in md
     print("colab notebook ok")
 
 

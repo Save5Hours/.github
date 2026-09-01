@@ -17,6 +17,8 @@ def main() -> None:
     assert "meeting-notes-drive" in src
     assert "public-drive-doc" in src
     assert "MediaInMemoryUpload" in src
+    assert 'build("docs", "v1"' in src
+    assert "documentId" in src
     assert "googleAccessToken" in src
     assert "post_with_retry" in src
     assert "if public.status_code >= 300 and token" in src

@@ -133,6 +133,8 @@ assert nodes["Public Drive Doc"]["parameters"]["path"] == "public-drive-doc"
 parse_public = nodes["Parse Drive URL"]["parameters"]["jsCode"]
 if "extractPublicDrivePayload" not in parse_public:
     raise SystemExit("Parse Drive URL must use extractPublicDrivePayload")
+if r"docs\.google\.com\/open\?id=" not in parse_public:
+    raise SystemExit("Parse Drive URL must accept Apps Script docs.google.com/open?id= URLs")
 assert nodes["Drive Apps Script"]["parameters"]["path"] == "meeting-notes-drive"
 assert nodes["Webhook"]["parameters"]["authentication"] == "headerAuth"
 assert "authentication" not in nodes["Drive Apps Script"]["parameters"] or not nodes["Drive Apps Script"]["parameters"].get("authentication")

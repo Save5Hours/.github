@@ -38,14 +38,7 @@ export function driveCallerAllowed(email) {
   return value.endsWith('@save5hours.ch');
 }
 
-export function parseDriveFileId(text) {
-  const raw = String(text || '');
-  const doc = raw.match(/docs\.google\.com\/document\/(?:u\/\d+\/)?d\/([a-zA-Z0-9_-]{10,})/i)
-    || raw.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]{10,})/i)
-    || raw.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]{10,})/i)
-    || raw.match(/FILE_ID\s+([a-zA-Z0-9_-]{10,})/i);
-  const fromUrl = Boolean(doc);
-  const candidate = doc ? doc[1] : raw.trim();
+function acceptDriveId(candidate, fromUrl) {
   if (!candidate || candidate.toLowerCase().startsWith('inline-')) return '';
   if (candidate.toUpperCase() === 'REPLACE_ME_GEMINI_NOTES_FOLDER_ID') return '';
   const blocked = new Set([
@@ -62,6 +55,21 @@ export function parseDriveFileId(text) {
   }
   if (!/^[0-9][a-zA-Z0-9_-]{19,}$/.test(candidate)) return '';
   return candidate;
+}
+
+export function parseDriveFileId(text) {
+  const raw = String(text || '');
+  const doc = raw.match(/docs\.google\.com\/document\/(?:u\/\d+\/)?d\/([a-zA-Z0-9_-]{10,})/i)
+    || raw.match(/docs\.google\.com\/open\?id=([a-zA-Z0-9_-]{10,})/i)
+    || raw.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]{10,})/i)
+    || raw.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]{10,})/i)
+    || raw.match(/FILE_ID\s+([a-zA-Z0-9_-]{10,})/i);
+  if (doc) return acceptDriveId(doc[1], true);
+  for (const part of raw.split(/[\s,;]+/)) {
+    const found = acceptDriveId(part.trim(), false);
+    if (found) return found;
+  }
+  return '';
 }
 
 export function firstScalar(value) {
@@ -101,7 +109,8 @@ export function extractPublicDrivePayload(src) {
   let extra = '';
   if (typeof root.body === 'string') extra = root.body;
   else if (typeof body.body === 'string') extra = body.body;
-  const fileId = parseDriveFileId(`${pick('fileId', 'id')}\n${url}\n${text}\n${extra}`);
+  const fileId = parseDriveFileId(pick('fileId', 'id'))
+    || parseDriveFileId(`${url}\n${text}\n${extra}`);
   const ready = noteTextIsReady(text);
   const name = pick('name', 'title') || 'Gemini notes';
   return {

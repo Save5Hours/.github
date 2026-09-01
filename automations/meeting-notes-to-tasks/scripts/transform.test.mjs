@@ -80,6 +80,14 @@ test('parseDriveFileId reads Google Doc URLs and rejects inline ids', () => {
     parseDriveFileId('https://drive.google.com/open?id=1DocVerifyFileIdNotInline99'),
     '1DocVerifyFileIdNotInline99',
   );
+  assert.equal(
+    parseDriveFileId('https://docs.google.com/open?id=1DocVerifyFileIdNotInline99'),
+    '1DocVerifyFileIdNotInline99',
+  );
+  assert.equal(
+    parseDriveFileId('1DocVerifyFileIdNotInline99\nhttps://docs.google.com/open?id=1DocVerifyFileIdNotInline99'),
+    '1DocVerifyFileIdNotInline99',
+  );
   assert.equal(parseDriveFileId('inline-15616df3'), '');
   assert.equal(parseDriveFileId('1BareFileIdFromHqTask'), '1BareFileIdFromHqTask');
   assert.equal(parseDriveFileId('apps-script-source'), '');
@@ -125,6 +133,17 @@ test('extractPublicDrivePayload reads n8n form POST with fileId + text', () => {
   });
   assert.equal(fromNotes.fileId, '1DocVerifyFileIdNotInline99');
   assert.equal(fromNotes.hasText, true);
+
+  const fromAppsScript = extractPublicDrivePayload({
+    body: {
+      fileId: '1DocVerifyFileIdNotInline99',
+      url: 'https://docs.google.com/open?id=1DocVerifyFileIdNotInline99',
+      name: 'Gemini notes — Drive path verification (n8n)',
+      text: notes,
+    },
+  });
+  assert.equal(fromAppsScript.fileId, '1DocVerifyFileIdNotInline99');
+  assert.equal(fromAppsScript.hasText, true);
 });
 
 test('parseHqDriveConfirmation reads Notion Drive URL and file ID properties', () => {

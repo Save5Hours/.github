@@ -22,6 +22,17 @@ def main() -> None:
         file_id_from("https://docs.google.com/document/u/0/d/1DocVerifyFileIdNotInline99/edit")
         == "1DocVerifyFileIdNotInline99"
     )
+    assert (
+        file_id_from("https://docs.google.com/open?id=1DocVerifyFileIdNotInline99")
+        == "1DocVerifyFileIdNotInline99"
+    )
+    assert (
+        parse_drive_refs(
+            "1DocVerifyFileIdNotInline99",
+            "https://docs.google.com/open?id=1DocVerifyFileIdNotInline99",
+        )["file_id"]
+        == "1DocVerifyFileIdNotInline99"
+    )
     parsed = parse_drive_refs(log, doc_url)
     assert parsed["folder_id"] == "1AbCdefghijKLmnopQRstuVWXyz0123456"
     assert parsed["file_id"] == "1DriveVerifyFileIdNotInline"

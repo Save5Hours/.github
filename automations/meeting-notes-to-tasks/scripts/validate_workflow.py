@@ -36,6 +36,7 @@ required = [
     "Fetch HQ Drive confirmation",
     "Fetch HQ Drive blocks",
     "Fetch HQ Drive comments",
+    "Find HQ Drive URL rows",
     "Parse HQ Drive confirmation",
     "Find HQ Drive duplicates",
     "Skip imported HQ Drive",
@@ -96,13 +97,16 @@ assert conns["Merge public Doc"]["main"][0][0]["node"] == "Normalize file"
 assert conns["HQ Drive URL poll"]["main"][0][0]["node"] == "Fetch HQ Drive confirmation"
 assert conns["Fetch HQ Drive confirmation"]["main"][0][0]["node"] == "Fetch HQ Drive blocks"
 assert conns["Fetch HQ Drive blocks"]["main"][0][0]["node"] == "Fetch HQ Drive comments"
-assert conns["Fetch HQ Drive comments"]["main"][0][0]["node"] == "Parse HQ Drive confirmation"
+assert conns["Fetch HQ Drive comments"]["main"][0][0]["node"] == "Find HQ Drive URL rows"
+assert conns["Find HQ Drive URL rows"]["main"][0][0]["node"] == "Parse HQ Drive confirmation"
 assert conns["Parse HQ Drive confirmation"]["main"][0][0]["node"] == "Find HQ Drive duplicates"
 assert conns["Find HQ Drive duplicates"]["main"][0][0]["node"] == "Skip imported HQ Drive"
 assert conns["Skip imported HQ Drive"]["main"][0][0]["node"] == "Has Doc text already"
 hq_parse = nodes["Parse HQ Drive confirmation"]["parameters"]["jsCode"]
 if "parseHqDriveConfirmation" not in hq_parse:
     raise SystemExit("Parse HQ Drive confirmation must use parseHqDriveConfirmation")
+if "pickHqDrivePayload" not in hq_parse:
+    raise SystemExit("Parse HQ Drive confirmation must use pickHqDrivePayload")
 if "hqPastedNotes" not in hq_parse:
     raise SystemExit("Parse HQ Drive confirmation must use pasted HQ notes (hqPastedNotes)")
 if "notionCommentsText" not in hq_parse and "comments" not in hq_parse:

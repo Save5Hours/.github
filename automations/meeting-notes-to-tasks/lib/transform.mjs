@@ -250,6 +250,18 @@ export function parseHqDriveConfirmation(page, extra) {
   });
 }
 
+/** Prefer the confirmation task; otherwise any HQ Task with a Drive Doc id. */
+export function pickHqDrivePayload(page, extra, otherPages) {
+  const first = parseHqDriveConfirmation(page, extra);
+  if (first.fileId) return first;
+  const pages = Array.isArray(otherPages) ? otherPages : [];
+  for (const row of pages) {
+    const parsed = parseHqDriveConfirmation(row);
+    if (parsed.fileId) return parsed;
+  }
+  return first;
+}
+
 export function noteTextIsReady(text) {
   return String(text || '').replace(/\s+/g, ' ').trim().length >= MIN_NOTE_CHARS;
 }

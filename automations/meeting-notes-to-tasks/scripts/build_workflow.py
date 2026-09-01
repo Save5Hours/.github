@@ -162,12 +162,13 @@ return [{ json: { ...meta, text, inlineText: text.trim() } }];
 PARSE_HQ_CODE = TRANSFORM_JS + "\n\n" + r"""
 const page = $('Fetch HQ Drive confirmation').first().json || {};
 const blocks = $('Fetch HQ Drive blocks').first().json || {};
-const comments = $input.first().json || {};
+const comments = $('Fetch HQ Drive comments').first().json || {};
+const query = $input.first().json || {};
 const extra = {
   blocks,
   comments,
 };
-const parsed = parseHqDriveConfirmation(page, extra);
+const parsed = pickHqDrivePayload(page, extra, query.results || []);
 if (!parsed.fileId) {
   return [];
 }
@@ -187,6 +188,23 @@ return [{ json: parsed }];
 HQ_FILE_FILTER_BODY = (
     "={{ JSON.stringify({ filter: { property: 'Drive file ID', rich_text: "
     "{ equals: $json.fileId } }, page_size: 1 }) }}"
+)
+
+HQ_DRIVE_URL_ROWS_BODY = json.dumps(
+    {
+        "filter": {
+            "or": [
+                {"property": "Drive URL", "url": {"is_not_empty": True}},
+                {
+                    "and": [
+                        {"property": "Drive file ID", "rich_text": {"is_not_empty": True}},
+                        {"property": "Drive file ID", "rich_text": {"does_not_contain": "inline-"}},
+                    ]
+                },
+            ]
+        },
+        "page_size": 20,
+    }
 )
 
 NOTION_FILTER_BODY = (
@@ -679,6 +697,34 @@ nodes = [
         "credentials": NOTION_CREDS,
     },
     {
+        "id": "find-hq-drive-url-rows",
+        "name": "Find HQ Drive URL rows",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [520, 1480],
+        "alwaysOutputData": True,
+        "parameters": {
+            "method": "POST",
+            "url": f"https://api.notion.com/v1/databases/{TASKS_DB}/query",
+            "authentication": "predefinedCredentialType",
+            "nodeCredentialType": "notionApi",
+            "sendHeaders": True,
+            "headerParameters": {
+                "parameters": [
+                    {"name": "Notion-Version", "value": "2022-06-28"},
+                ]
+            },
+            "sendBody": True,
+            "specifyBody": "json",
+            "jsonBody": HQ_DRIVE_URL_ROWS_BODY,
+            "options": {"timeout": 30000},
+        },
+        "retryOnFail": True,
+        "maxTries": 2,
+        "waitBetweenTries": 2000,
+        "credentials": NOTION_CREDS,
+    },
+    {
         "id": "parse-hq-drive-confirmation",
         "name": "Parse HQ Drive confirmation",
         "type": "n8n-nodes-base.code",
@@ -1081,7 +1127,8 @@ connections = {
     "HQ Drive URL poll": conn("Fetch HQ Drive confirmation"),
     "Fetch HQ Drive confirmation": conn("Fetch HQ Drive blocks"),
     "Fetch HQ Drive blocks": conn("Fetch HQ Drive comments"),
-    "Fetch HQ Drive comments": conn("Parse HQ Drive confirmation"),
+    "Fetch HQ Drive comments": conn("Find HQ Drive URL rows"),
+    "Find HQ Drive URL rows": conn("Parse HQ Drive confirmation"),
     "Parse HQ Drive confirmation": conn("Find HQ Drive duplicates"),
     "Find HQ Drive duplicates": conn("Skip imported HQ Drive"),
     "Skip imported HQ Drive": conn("Has Doc text already"),

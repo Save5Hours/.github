@@ -16,6 +16,7 @@ import {
   publicExportLooksLikeHtml,
   parseDriveFileId,
   parseHqDriveConfirmation,
+  pickHqDrivePayload,
   parseOpenRouterContent,
   skipDuplicateTasks,
 } from '../lib/transform.mjs';
@@ -234,6 +235,42 @@ test('parseHqDriveConfirmation reads Notion Drive URL and file ID properties', (
   );
   assert.equal(instructionBody.fileId, '1DocVerifyFileIdNotInline99');
   assert.equal(instructionBody.hasText, false);
+});
+
+test('pickHqDrivePayload reads Drive URL from another HQ Task row', () => {
+  const emptyConfirm = pickHqDrivePayload({ properties: {} }, {}, []);
+  assert.equal(emptyConfirm.fileId, '');
+
+  const fromOther = pickHqDrivePayload(
+    { properties: {} },
+    {},
+    [
+      {
+        properties: {
+          Name: { title: [{ plain_text: 'Some other task' }] },
+          'Drive URL': { url: 'https://docs.google.com/document/d/1DocVerifyFileIdNotInline99/edit' },
+        },
+      },
+    ],
+  );
+  assert.equal(fromOther.fileId, '1DocVerifyFileIdNotInline99');
+
+  const preferConfirm = pickHqDrivePayload(
+    {
+      properties: {
+        'Drive URL': { url: 'https://docs.google.com/document/d/1ConfirmFileIdNotInline99/edit' },
+      },
+    },
+    {},
+    [
+      {
+        properties: {
+          'Drive URL': { url: 'https://docs.google.com/document/d/1OtherFileIdNotInline99xx/edit' },
+        },
+      },
+    ],
+  );
+  assert.equal(preferConfirm.fileId, '1ConfirmFileIdNotInline99');
 });
 
 test('driveCallerAllowed is Save 5 Hours plus known organizer Gmail', () => {

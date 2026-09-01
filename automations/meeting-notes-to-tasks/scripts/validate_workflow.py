@@ -78,10 +78,14 @@ assert conns["Drive Apps Script"]["main"][0][0]["node"] == "Extract Google token
 assert conns["Extract Google token"]["main"][0][0]["node"] == "Google userinfo"
 assert conns["Google userinfo"]["main"][0][0]["node"] == "Allow Drive caller"
 assert conns["Allow Drive caller"]["main"][0][0]["node"] == "Normalize file"
-assert nodes["Google userinfo"]["parameters"]["url"] == "https://www.googleapis.com/oauth2/v2/userinfo"
+assert "drive/v3/about" in nodes["Google userinfo"]["parameters"]["url"]
+assert "Bearer " in nodes["Google userinfo"]["parameters"]["headerParameters"]["parameters"][0]["value"]
+assert nodes["Drive Apps Script"]["parameters"]["responseMode"] == "lastNode"
 allow = nodes["Allow Drive caller"]["parameters"]["jsCode"]
 if "driveCallerAllowed" not in allow:
     raise SystemExit("Allow Drive caller must check driveCallerAllowed")
+if "emailAddress" not in allow:
+    raise SystemExit("Allow Drive caller must read Drive about user.emailAddress")
 
 parse = nodes["Parse and map assignees"]["parameters"]["jsCode"]
 for user_id in (

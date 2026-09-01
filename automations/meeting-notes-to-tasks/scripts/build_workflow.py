@@ -120,7 +120,11 @@ const src = $input.first().json || {};
 const body = src.body && typeof src.body === 'object' && !Array.isArray(src.body)
   ? src.body
   : src;
-const token = String(body.googleAccessToken || body.access_token || '')
+const headers = src.headers || {};
+const headerAuth = String(headers.authorization || headers.Authorization || '')
+  .trim()
+  .replace(/^Bearer\s+/i, '');
+const token = String(body.googleAccessToken || body.access_token || headerAuth || '')
   .trim()
   .replace(/^Bearer\s+/i, '');
 if (!token) {
@@ -131,7 +135,7 @@ return [{ json: { ...body, googleAccessToken: token } }];
 
 ALLOW_DRIVE_CODE = TRANSFORM_JS + "\n\n" + r"""
 const info = $input.first().json || {};
-const email = info.email || '';
+const email = info.user?.emailAddress || info.email || '';
 if (!driveCallerAllowed(email)) {
   throw new Error('Drive caller is not on the Save 5 Hours allowlist');
 }
@@ -257,7 +261,7 @@ nodes = [
         "parameters": {
             "httpMethod": "POST",
             "path": "meeting-notes-drive",
-            "responseMode": "onReceived",
+            "responseMode": "lastNode",
             "options": {},
         },
     },
@@ -276,13 +280,13 @@ nodes = [
         "typeVersion": 4.2,
         "position": [440, 880],
         "parameters": {
-            "url": "https://www.googleapis.com/oauth2/v2/userinfo",
+            "url": "https://www.googleapis.com/drive/v3/about?fields=user",
             "sendHeaders": True,
             "headerParameters": {
                 "parameters": [
                     {
                         "name": "Authorization",
-                        "value": "=Bearer {{ $json.googleAccessToken }}",
+                        "value": "={{ 'Bearer ' + $json.googleAccessToken }}",
                     }
                 ]
             },

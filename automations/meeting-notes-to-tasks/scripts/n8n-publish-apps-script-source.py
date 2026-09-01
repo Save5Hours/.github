@@ -160,7 +160,7 @@ def setup_html(source: str) -> str:
       const url = document.getElementById('docurl').value.trim();
       const text = document.getElementById('doctext').value.trim();
       if (!url) { err.textContent = 'paste a Google Doc URL'; return; }
-      if (text && text.replace(/\s+/g, ' ').length < 80) {
+      if (text && text.replace(/\\s+/g, ' ').length < 80) {
         err.textContent = 'notes text is too short (need ~80+ characters)';
         return;
       }

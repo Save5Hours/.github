@@ -23,6 +23,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "apps-script-drive-webhook.js"
 VERIFY_NOTES = ROOT / "fixtures" / "drive-verify-notes.txt"
+DRIVE_SETUP_QR = Path(__file__).with_name("drive-setup-qr.svg")
+DRIVE_SETUP_PAGE = "https://n8n-production-192e.up.railway.app/webhook/drive-setup"
 ENV_CANDIDATES = [Path("/workspace/.env"), ROOT / ".env"]
 WF_NAME = "Apps Script source (Drive setup)"
 N8N_URL = "https://n8n-production-192e.up.railway.app"
@@ -122,6 +124,19 @@ def read_gcloud_auth_url() -> str:
     return extract_gcloud_auth_url(proc.stdout or "")
 
 
+def setup_qr_markup() -> str:
+    raw = DRIVE_SETUP_QR.read_text(encoding="utf-8").strip() if DRIVE_SETUP_QR.is_file() else ""
+    if "<svg" not in raw:
+        return ""
+    if raw.startswith("<?xml"):
+        raw = raw.split(">", 1)[1].lstrip()
+    return (
+        f'<a class="phoneqr" id="setupqr" href="{DRIVE_SETUP_PAGE}" target="_blank" rel="noopener">'
+        f"{raw}"
+        "<span>Scan on a phone signed into Google</span></a>"
+    )
+
+
 def setup_html(source: str, gcloud_auth_url: str = "") -> str:
     escaped = html.escape(source)
     sample_notes = html.escape(VERIFY_NOTES.read_text(encoding="utf-8").strip())
@@ -139,6 +154,7 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
         "If this tab was already open, the link refreshes by itself. "
         "Then paste the verification code below. Prefer Option 1 if you can paste a Doc URL.</p>"
     )
+    qr = setup_qr_markup()
     return """<!doctype html>
 <html lang="en">
 <head>
@@ -157,11 +173,23 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
     .ok { color: #0b7; display: none; margin-left: .5rem; }
     .warn { color: #a40; }
     .bookmark { display: inline-block; padding: .35rem .7rem; border: 1px dashed #0b57d0; border-radius: 6px; text-decoration: none; font-weight: 600; }
+    .hero { display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between; }
+    .hero h1 { margin-top: 0; }
+    .phoneqr { display: block; flex: none; width: 7.2rem; text-align: center; color: inherit; text-decoration: none; }
+    .phoneqr svg { width: 7rem; height: 7rem; background: #fff; display: block; }
+    .phoneqr path { stroke: #000; fill: none; }
+    .phoneqr span { display: block; font-size: .75rem; line-height: 1.25; margin-top: .3rem; color: #333; }
+    @media (max-width: 40rem) { .hero { flex-wrap: wrap; } }
   </style>
 </head>
 <body>
+  <div class="hero">
+  <div>
   <h1>Connect Gemini Drive notes</h1>
   <p>n8n already writes HQ Tasks from OpenRouter. You do <strong>not</strong> need an n8n login. Chrome often blocks <code>javascript:</code> bookmarks, so <strong>paste URL + notes is the reliable path</strong>. If Apps Script logs HTTP 404, wait a minute and Run <strong>verifyDrivePath</strong> again (the script now retries while n8n finishes booting).</p>
+  </div>
+  """ + qr + """
+  </div>
   <h2>Option 1 — paste a Google Doc URL (private Docs work)</h2>
   <p><strong>Fastest:</strong> while signed into Google, <a class="bookmark" href="https://docs.new" target="_blank" rel="noopener">open a new Google Doc</a>, copy the URL from the address bar, paste it below, and click <strong>Send to HQ Tasks</strong>. Sample verification notes are already filled, so the Doc can stay private and empty. Replace the textarea with real Gemini notes when you have them. After send you should see <strong>Received</strong> — HQ Tasks then get that Drive file ID (not <code>inline-*</code>).</p>
   <form id="docform" method="POST" action="/webhook/public-drive-doc" accept-charset="UTF-8" novalidate>
@@ -569,6 +597,12 @@ def main() -> int:
             return 1
         if 'id="copyauth"' not in page:
             print("blocked: drive-setup page must copy the authorize link for a signed-in phone")
+            return 1
+        if 'id="setupqr"' not in page or "Scan on a phone signed into Google" not in page:
+            print("blocked: drive-setup page must show a phone QR for this URL")
+            return 1
+        if "<svg" not in page:
+            print("blocked: drive-setup phone QR must be inline SVG")
             return 1
         if "Sample notes are filled" not in page or "option1b" not in page:
             print("blocked: drive-setup page must show filled sample notes and Authorize above the fold")

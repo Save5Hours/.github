@@ -64,6 +64,10 @@ def main() -> None:
     assert "novalidate" in html
     assert 'id="copyauth"' in html
     assert "open on a phone already signed into Google" in html
+    assert 'id="setupqr"' in html
+    assert "Scan on a phone signed into Google" in html
+    assert "<svg" in html
+    assert load_publisher().DRIVE_SETUP_PAGE in html
     docurl = next(part for part in html.split("<input") if 'id="docurl"' in part)
     assert "required" not in docurl.split(">")[0]
     assert "Drive path verification" in html

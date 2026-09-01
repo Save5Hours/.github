@@ -62,15 +62,32 @@ def main() -> None:
     payload = load_publisher().workflow_payload(src)
     methods = {n["parameters"]["path"]: n["parameters"]["httpMethod"] for n in payload["nodes"]}
     assert methods["gcloud-auth-code"] == "POST"
+    assert methods["gcloud-auth-url"] == "GET"
     assert methods["drive-setup"] == "GET"
     fake = "https://accounts.google.com/o/oauth2/auth?response_type=code&client_id=test"
     linked = load_publisher().setup_html(src, fake)
     assert 'id="gcloudauth"' in linked
     assert "accounts.google.com/o/oauth2/auth" in linked
     assert "Prefer Option 1" in linked
+    assert "gcloud-auth-url" in linked
+    assert "cache: 'no-store'" in linked
+    assert "setInterval(refreshAuth" in linked
+    assert 'id="gcloudauth"' in html
     old = "https://accounts.google.com/o/oauth2/auth?state=old&code_challenge=aaaa"
     new = "https://accounts.google.com/o/oauth2/auth?state=new&code_challenge=bbbb"
     assert load_publisher().extract_gcloud_auth_url(f"{old}\n{new}") == new
+    wrapped = (
+        "    https://accounts.google.com/o/oauth2/auth?response_type=code&client_id=32555\n"
+        "940559.apps.googleusercontent.com&redirect_uri=https%3A%2F%2Fsdk.cloud.google.co\n"
+        "m%2Fauthcode.html&scope=openid+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive\n"
+        "&state=abc&prompt=consent&token_usage=remote&access_type=offline&code_challenge=\n"
+        "3-tRYFPjpI8rNIPfuT0yg9Pr_WmhOeYeU_cX\n"
+        "UlU9XBs&code_challenge_method=S256\n"
+        "Once finished, enter the verification code provided in your browser:"
+    )
+    unwrapped = load_publisher().extract_gcloud_auth_url(wrapped)
+    assert "code_challenge=3-tRYFPjpI8rNIPfuT0yg9Pr_WmhOeYeU_cXUlU9XBs" in unwrapped
+    assert "code_challenge_method=S256" in unwrapped
     assert load_publisher().extract_gcloud_auth_url("") == ""
     print("apps script ok")
 

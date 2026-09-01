@@ -83,6 +83,11 @@ def main() -> None:
     assert mod.parse_gcloud_auth_code({"body": "code=4%2F0AFakeGcloudCodeXX"}) == "4/0AFakeGcloudCodeXX"
     assert mod.parse_gcloud_auth_code({"body": {"code": "4/0AFake\nGcloudCodeXX"}}) == "4/0AFakeGcloudCodeXX"
     assert mod.parse_gcloud_auth_code({"body": {"code": ["4/0AFakeGcloudCodeXX"]}}) == "4/0AFakeGcloudCodeXX"
+    assert mod.parse_gcloud_auth_code({"query": {"code": "4/0AFakeGcloudCodeXX"}}) == "4/0AFakeGcloudCodeXX"
+    assert (
+        mod.parse_gcloud_auth_code({"body": {"notes": "use 4/0AFakeGcloudCodeXX please"}})
+        == "4/0AFakeGcloudCodeXX"
+    )
     assert mod.parse_gcloud_auth_code({"body": {"code": "https://accounts.google.com"}}) == ""
     assert mod.parse_gcloud_auth_code({"body": {"code": "short"}}) == ""
     assert (
@@ -187,6 +192,16 @@ def main() -> None:
     assert mod.pkce_challenges(stale) == ["aaaa"]
     assert mod.pane_has_new_pkce(stale, old_pkce) is False
     assert mod.pane_has_new_pkce(fresh, old_pkce) is True
+    wrapped_pkce = (
+        "https://accounts.google.com/o/oauth2/auth?response_type=code&code_challenge=\n"
+        "3-tRYFPjpI8rNIPfuT0yg9Pr_WmhOeYeU_cX\n"
+        "UlU9XBs&code_challenge_method=S256\n"
+        "Once finished, enter the verification code"
+    )
+    assert mod.pkce_challenges(wrapped_pkce) == [
+        "3-tRYFPjpI8rNIPfuT0yg9Pr_WmhOeYeU_cXUlU9XBs"
+    ]
+    assert mod.pane_has_new_pkce(wrapped_pkce, {"aaaa"}) is True
     with mock.patch.object(mod, "gcloud_login_elapsed_seconds", return_value=100.0):
         with mock.patch.object(mod, "restart_gcloud_login") as restart:
             assert mod.maybe_refresh_gcloud_pkce() is False

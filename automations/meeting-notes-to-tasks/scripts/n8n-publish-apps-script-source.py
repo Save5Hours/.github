@@ -62,10 +62,49 @@ def request(api_key: str, method: str, path: str, body=None):
         return err.code, parsed
 
 
+def unwrap_gcloud_auth_urls(text: str) -> str:
+    """Join tmux-wrapped Google authorize URLs so PKCE is not truncated."""
+    lines = (text or "").splitlines()
+    out: list[str] = []
+    buf = ""
+
+    def flush() -> None:
+        nonlocal buf
+        if buf:
+            out.append(buf)
+            buf = ""
+
+    for line in lines:
+        stripped = line.strip()
+        if buf:
+            if (
+                not stripped
+                or stripped.startswith("Once finished")
+                or stripped.startswith("Go to the following")
+                or stripped.startswith("https://")
+            ):
+                flush()
+            else:
+                buf += stripped
+                if "code_challenge_method=" in buf:
+                    flush()
+                continue
+        idx = stripped.find("https://accounts.google.com/o/oauth2/auth")
+        if idx >= 0:
+            buf = stripped[idx:]
+            if "code_challenge_method=" in buf:
+                flush()
+            continue
+        out.append(line)
+    flush()
+    return "\n".join(out)
+
+
 def extract_gcloud_auth_url(text: str) -> str:
     """Return the newest Google authorize URL from tmux output (PKCE must match)."""
     matches = re.findall(
-        r"https://accounts\.google\.com/o/oauth2/auth\S+", text or ""
+        r"https://accounts\.google\.com/o/oauth2/auth\S+",
+        unwrap_gcloud_auth_urls(text),
     )
     return matches[-1] if matches else ""
 
@@ -86,14 +125,17 @@ def read_gcloud_auth_url() -> str:
 def setup_html(source: str, gcloud_auth_url: str = "") -> str:
     escaped = html.escape(source)
     sample_notes = html.escape(VERIFY_NOTES.read_text(encoding="utf-8").strip())
-    auth_link = ""
-    if gcloud_auth_url.startswith("https://accounts.google.com/o/oauth2/auth"):
-        safe = html.escape(gcloud_auth_url, quote=True)
-        auth_link = (
-            f'<p><a class="bookmark" id="gcloudauth" href="{safe}" target="_blank" rel="noopener">'
-            "Authorize Google Drive</a> (Google Cloud SDK: Drive plus Cloud CLI), "
-            "then paste the verification code below. Prefer Option 1 if you can paste a Doc URL.</p>"
-        )
+    safe = (
+        html.escape(gcloud_auth_url, quote=True)
+        if gcloud_auth_url.startswith("https://accounts.google.com/o/oauth2/auth")
+        else "#"
+    )
+    auth_link = (
+        f'<p><a class="bookmark" id="gcloudauth" href="{safe}" target="_blank" rel="noopener">'
+        "Authorize Google Drive</a> (Google Cloud SDK: Drive plus Cloud CLI). "
+        "If this tab was already open, the link refreshes by itself. "
+        "Then paste the verification code below. Prefer Option 1 if you can paste a Doc URL.</p>"
+    )
     return """<!doctype html>
 <html lang="en">
 <head>
@@ -238,6 +280,19 @@ def setup_html(source: str, gcloud_auth_url: str = "") -> str:
       const el = document.getElementById('gcloudcode');
       el.value = el.value.replace(/\\s+/g, '');
     };
+    const refreshAuth = async () => {
+      const el = document.getElementById('gcloudauth');
+      if (!el) return;
+      try {
+        const res = await fetch('/webhook/gcloud-auth-url', { cache: 'no-store' });
+        const href = (await res.text()).trim();
+        if (href.indexOf('https://accounts.google.com/o/oauth2/auth') === 0) {
+          el.href = href;
+        }
+      } catch (e) {}
+    };
+    refreshAuth();
+    setInterval(refreshAuth, 30000);
     document.getElementById('docform').onsubmit = (event) => {
       const err = document.getElementById('docerr');
       err.textContent = '';
@@ -304,7 +359,13 @@ def webhook_node(
             "options": {
                 "responseData": body,
                 "responseHeaders": {
-                    "entries": [{"name": "Content-Type", "value": content_type}]
+                    "entries": [
+                        {"name": "Content-Type", "value": content_type},
+                        {
+                            "name": "Cache-Control",
+                            "value": "no-store, no-cache, must-revalidate",
+                        },
+                    ]
                 },
             },
         },
@@ -339,6 +400,20 @@ def workflow_payload(source: str, gcloud_auth_url: str = "") -> dict:
                 "text/html; charset=utf-8",
                 560,
                 method="POST",
+            ),
+            webhook_node(
+                "gcloud-auth-url",
+                "Gcloud auth URL",
+                "gcloud-auth-url",
+                (
+                    gcloud_auth_url
+                    if gcloud_auth_url.startswith(
+                        "https://accounts.google.com/o/oauth2/auth"
+                    )
+                    else ""
+                ),
+                "text/plain; charset=utf-8",
+                840,
             ),
         ],
         "connections": {},
@@ -445,10 +520,22 @@ def main() -> int:
         if 'id="gcloudcode"' not in page or "gcloud-auth-code" not in page:
             print("blocked: drive-setup page missing gcloud verification-code form")
             return 1
-        auth_url = read_gcloud_auth_url()
-        if auth_url and 'id="gcloudauth"' not in page:
+        if 'id="gcloudauth"' not in page or "gcloud-auth-url" not in page:
             print("blocked: drive-setup page missing live Google authorize link")
             return 1
+        if "cache: 'no-store'" not in page or "setInterval(refreshAuth" not in page:
+            print("blocked: drive-setup page must refresh the authorize link")
+            return 1
+        auth_url = read_gcloud_auth_url()
+        if auth_url:
+            req = urllib.request.Request(f"{N8N_URL}/webhook/gcloud-auth-url", method="GET")
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                live_url = html.unescape(resp.read().decode("utf-8", errors="replace").strip())
+            live_chal = re.search(r"code_challenge=([^&\s]+)", live_url)
+            want_chal = re.search(r"code_challenge=([^&\s]+)", auth_url)
+            if not live_chal or not want_chal or live_chal.group(1) != want_chal.group(1):
+                print("blocked: gcloud-auth-url PKCE does not match tmux")
+                return 1
         if "Drive path verification" not in page:
             print("blocked: drive-setup form must prefill verification notes")
             return 1

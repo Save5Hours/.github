@@ -92,16 +92,33 @@ def parse_gcloud_auth_code(src) -> str:
         body = parsed
     if not isinstance(body, dict):
         body = {}
-    raw_code = body.get("code") or root.get("code") or ""
+    query = root.get("query") if isinstance(root.get("query"), dict) else {}
+    raw_code = body.get("code") or query.get("code") or root.get("code") or ""
     if isinstance(raw_code, list):
         raw_code = raw_code[-1] if raw_code else ""
     # Google's authcode page wraps the value; pasted codes often include newlines.
     code = "".join(str(raw_code).split())
     if not code or code.startswith("http") or "accounts.google.com" in code.lower():
-        return ""
-    if len(code) < 8:
-        return ""
-    return code
+        code = ""
+    elif len(code) < 8:
+        code = ""
+    if code:
+        return code
+    blobs: list[str] = []
+    for layer in (body, query, root):
+        if isinstance(layer, dict):
+            for value in layer.values():
+                if isinstance(value, str):
+                    blobs.append(value)
+        elif isinstance(layer, str):
+            blobs.append(layer)
+    for blob in blobs:
+        if blob == raw_code:
+            continue
+        found = extract_gcloud_code_from_text(blob)
+        if found:
+            return found
+    return ""
 
 
 def extract_gcloud_code_from_text(text: str) -> str:
@@ -161,8 +178,46 @@ def tmux_args(*extra: str) -> list[str]:
     return ["tmux", *conf, *extra]
 
 
+def unwrap_gcloud_auth_urls(text: str) -> str:
+    """Join tmux-wrapped Google authorize URLs so PKCE is not truncated."""
+    lines = (text or "").splitlines()
+    out: list[str] = []
+    buf = ""
+
+    def flush() -> None:
+        nonlocal buf
+        if buf:
+            out.append(buf)
+            buf = ""
+
+    for line in lines:
+        stripped = line.strip()
+        if buf:
+            if (
+                not stripped
+                or stripped.startswith("Once finished")
+                or stripped.startswith("Go to the following")
+                or stripped.startswith("https://")
+            ):
+                flush()
+            else:
+                buf += stripped
+                if "code_challenge_method=" in buf:
+                    flush()
+                continue
+        idx = stripped.find("https://accounts.google.com/o/oauth2/auth")
+        if idx >= 0:
+            buf = stripped[idx:]
+            if "code_challenge_method=" in buf:
+                flush()
+            continue
+        out.append(line)
+    flush()
+    return "\n".join(out)
+
+
 def pkce_challenges(text: str) -> list[str]:
-    return re.findall(r"code_challenge=([^&\s]+)", text or "")
+    return re.findall(r"code_challenge=([^&\s]+)", unwrap_gcloud_auth_urls(text))
 
 
 def pane_has_new_pkce(text: str, previous: set[str]) -> bool:

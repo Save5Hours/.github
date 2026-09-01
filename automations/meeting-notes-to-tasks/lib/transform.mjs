@@ -103,6 +103,26 @@ export function extractPublicDrivePayload(src) {
   };
 }
 
+export function notionPlain(prop) {
+  if (!prop || typeof prop !== 'object') return '';
+  if (typeof prop.url === 'string' && prop.url.trim()) return prop.url.trim();
+  const spans = prop.rich_text || prop.title || [];
+  if (!Array.isArray(spans)) return '';
+  return spans.map((span) => span.plain_text || span.text?.content || '').join('').trim();
+}
+
+/** Notion HQ confirmation page → Drive Doc payload (no inline-* ids). */
+export function parseHqDriveConfirmation(page) {
+  const props = page && page.properties && typeof page.properties === 'object'
+    ? page.properties
+    : {};
+  return extractPublicDrivePayload({
+    url: notionPlain(props['Drive URL']),
+    fileId: notionPlain(props['Drive file ID']),
+    name: notionPlain(props.Name) || 'Gemini notes',
+  });
+}
+
 export function noteTextIsReady(text) {
   return String(text || '').replace(/\s+/g, ' ').trim().length >= MIN_NOTE_CHARS;
 }

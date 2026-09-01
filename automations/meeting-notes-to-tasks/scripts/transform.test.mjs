@@ -14,6 +14,7 @@ import {
   normalizeMeetingInput,
   noteTextIsReady,
   parseDriveFileId,
+  parseHqDriveConfirmation,
   parseOpenRouterContent,
   skipDuplicateTasks,
 } from '../lib/transform.mjs';
@@ -105,6 +106,28 @@ test('extractPublicDrivePayload reads n8n form POST with fileId + text', () => {
   });
   assert.equal(fromNotes.fileId, '1DocVerifyFileIdNotInline99');
   assert.equal(fromNotes.hasText, true);
+});
+
+test('parseHqDriveConfirmation reads Notion Drive URL and file ID properties', () => {
+  const fromUrl = parseHqDriveConfirmation({
+    properties: {
+      'Drive URL': { url: 'https://docs.google.com/document/d/1DocVerifyFileIdNotInline99/edit' },
+      'Drive file ID': { rich_text: [] },
+      Name: { title: [{ plain_text: 'Confirm the Drive folder' }] },
+    },
+  });
+  assert.equal(fromUrl.fileId, '1DocVerifyFileIdNotInline99');
+  assert.equal(fromUrl.hasText, false);
+
+  const empty = parseHqDriveConfirmation({ properties: {} });
+  assert.equal(empty.fileId, '');
+
+  const inline = parseHqDriveConfirmation({
+    properties: {
+      'Drive file ID': { rich_text: [{ plain_text: 'inline-15616df3' }] },
+    },
+  });
+  assert.equal(inline.fileId, '');
 });
 
 test('driveCallerAllowed is Save 5 Hours plus known organizer Gmail', () => {

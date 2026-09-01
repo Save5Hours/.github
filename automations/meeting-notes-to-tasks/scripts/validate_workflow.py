@@ -29,6 +29,11 @@ required = [
     "Has Doc text already",
     "Export public Doc",
     "Merge public Doc",
+    "HQ Drive URL poll",
+    "Fetch HQ Drive confirmation",
+    "Parse HQ Drive confirmation",
+    "Find HQ Drive duplicates",
+    "Skip imported HQ Drive",
     "Manual test",
     "Set test fileId",
     "Normalize file",
@@ -76,6 +81,17 @@ assert conns["Has Doc text already"]["main"][0][0]["node"] == "Normalize file"
 assert conns["Has Doc text already"]["main"][1][0]["node"] == "Export public Doc"
 assert conns["Export public Doc"]["main"][0][0]["node"] == "Merge public Doc"
 assert conns["Merge public Doc"]["main"][0][0]["node"] == "Normalize file"
+assert conns["HQ Drive URL poll"]["main"][0][0]["node"] == "Fetch HQ Drive confirmation"
+assert conns["Fetch HQ Drive confirmation"]["main"][0][0]["node"] == "Parse HQ Drive confirmation"
+assert conns["Parse HQ Drive confirmation"]["main"][0][0]["node"] == "Find HQ Drive duplicates"
+assert conns["Find HQ Drive duplicates"]["main"][0][0]["node"] == "Skip imported HQ Drive"
+assert conns["Skip imported HQ Drive"]["main"][0][0]["node"] == "Has Doc text already"
+hq_parse = nodes["Parse HQ Drive confirmation"]["parameters"]["jsCode"]
+if "parseHqDriveConfirmation" not in hq_parse:
+    raise SystemExit("Parse HQ Drive confirmation must use parseHqDriveConfirmation")
+merge_public = nodes["Merge public Doc"]["parameters"]["jsCode"]
+if "Parse HQ Drive confirmation" not in merge_public:
+    raise SystemExit("Merge public Doc must read Parse HQ Drive confirmation meta")
 assert nodes["Public Drive Doc"]["parameters"]["path"] == "public-drive-doc"
 parse_public = nodes["Parse Drive URL"]["parameters"]["jsCode"]
 if "extractPublicDrivePayload" not in parse_public:

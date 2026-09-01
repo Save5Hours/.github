@@ -20,6 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "apps-script-drive-webhook.js"
+VERIFY_NOTES = ROOT / "fixtures" / "drive-verify-notes.txt"
 ENV_CANDIDATES = [Path("/workspace/.env"), ROOT / ".env"]
 WF_NAME = "Apps Script source (Drive setup)"
 N8N_URL = "https://n8n-production-192e.up.railway.app"
@@ -61,6 +62,7 @@ def request(api_key: str, method: str, path: str, body=None):
 
 def setup_html(source: str) -> str:
     escaped = html.escape(source)
+    sample_notes = html.escape(VERIFY_NOTES.read_text(encoding="utf-8").strip())
     return """<!doctype html>
 <html lang="en">
 <head>
@@ -82,21 +84,21 @@ def setup_html(source: str) -> str:
 <body>
   <h1>Connect Gemini Drive notes</h1>
   <p>n8n already writes HQ Tasks from OpenRouter. You do <strong>not</strong> need an n8n login. Chrome often blocks <code>javascript:</code> bookmarks, so <strong>paste URL + notes is the reliable path</strong>. If Apps Script logs HTTP 404, wait a minute and Run <strong>verifyDrivePath</strong> again (the script now retries while n8n finishes booting).</p>
-  <h2>Option 1 — paste URL + notes (private Docs work)</h2>
-  <p>In the Gemini Doc: copy the URL, then <strong>Ctrl+A / Ctrl+C</strong> (or File → Download → Plain text). Paste both here, or use <strong>Paste clipboard</strong>. n8n keeps that Drive file ID. Sharing can stay private. After send you should see <strong>Received</strong> and the Drive file ID — not a blank page.</p>
+  <h2>Option 1 — paste a Google Doc URL (private Docs work)</h2>
+  <p><strong>Fastest:</strong> while signed into Google, <a class="bookmark" href="https://docs.new" target="_blank" rel="noopener">open a new Google Doc</a>, copy the URL from the address bar, paste it below, and click <strong>Send to HQ Tasks</strong>. Sample verification notes are already filled, so the Doc can stay private and empty. Replace the textarea with real Gemini notes when you have them. After send you should see <strong>Received</strong> — HQ Tasks then get that Drive file ID (not <code>inline-*</code>).</p>
   <form id="docform" method="POST" action="/webhook/public-drive-doc" accept-charset="UTF-8">
     <p>
       <input id="docurl" name="url" type="text" inputmode="url" autocomplete="url" required placeholder="https://docs.google.com/document/d/…/edit" style="font:inherit;width:min(100%,28rem);padding:.3rem .5rem"/>
       <input id="docfile" type="file" accept=".txt,text/plain"/>
-      <input type="hidden" name="name" value="Gemini notes"/>
+      <input type="hidden" name="name" value="Gemini notes — Drive path verification (n8n)"/>
       <input type="hidden" name="fileId" id="docfileid" value=""/>
       <button type="button" id="pasteclip">Paste clipboard</button>
       <button type="submit" id="senddoc">Send to HQ Tasks</button>
       <span class="warn" id="docerr"></span>
     </p>
-    <textarea class="notes" id="doctext" name="text" placeholder="Paste the Doc text here if it is not shared as Anyone with the link"></textarea>
+    <textarea class="notes" id="doctext" name="text" placeholder="Paste the Doc text here if it is not shared as Anyone with the link">""" + sample_notes + """</textarea>
   </form>
-  <p>If you only paste the URL and leave the text empty, the Doc must be <strong>Anyone with the link can view</strong>.</p>
+  <p>A Gemini Doc URL also works. If you clear the text, the Doc must be <strong>Anyone with the link can view</strong>.</p>
   <h2>Option 2 — Colab (creates a real Google Doc, one Run all)</h2>
   <p>Signed in as the Meet organizer: <a class="bookmark" href="https://colab.research.google.com/github/Save5Hours/.github/blob/cursor/n8n-meeting-notes-railway-3e35/automations/meeting-notes-to-tasks/scripts/colab_drive_verify.ipynb" target="_blank" rel="noopener">Open Colab — Run all</a></p>
   <p>Runtime → <strong>Run all</strong> → Google sign-in. It creates a Google Doc and POSTs <code>fileId</code> + notes to <code>/webhook/public-drive-doc</code> (no n8n login, no <code>WEBHOOK_SECRET</code>). HQ Tasks should then show a Drive file ID that is not <code>inline-*</code>.</p>
@@ -349,6 +351,12 @@ def main() -> int:
             return 1
         if "Open Colab" not in page or "public-drive-doc" not in page:
             print("blocked: drive-setup Colab path must POST public-drive-doc")
+            return 1
+        if "docs.new" not in page:
+            print("blocked: drive-setup page missing docs.new shortcut")
+            return 1
+        if "Drive path verification" not in page:
+            print("blocked: drive-setup form must prefill verification notes")
             return 1
         if 'id="secret"' in page or "filledSource" in page:
             print("blocked: drive-setup page still asks for the n8n webhook secret")

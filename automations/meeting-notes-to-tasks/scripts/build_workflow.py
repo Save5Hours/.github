@@ -780,7 +780,7 @@ nodes = [
         "alwaysOutputData": True,
         "parameters": {
             "method": "GET",
-            "url": "={{ 'https://api.notion.com/v1/blocks/' + $('Expand HQ Tasks').item.json.id + '/children?page_size=100' }}",
+            "url": "={{ 'https://api.notion.com/v1/blocks/' + $json.id + '/children?page_size=100' }}",
             "authentication": "predefinedCredentialType",
             "nodeCredentialType": "notionApi",
             "sendHeaders": True,
@@ -795,6 +795,14 @@ nodes = [
         "maxTries": 2,
         "waitBetweenTries": 2000,
         "credentials": NOTION_CREDS,
+    },
+    {
+        "id": "merge-hq-task-extras",
+        "name": "Merge HQ Task extras",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3,
+        "position": [620, 1480],
+        "parameters": {"mode": "append"},
     },
     {
         "id": "parse-hq-drive-confirmation",
@@ -1206,9 +1214,17 @@ connections = {
     "Fetch HQ Drive blocks": conn("Fetch HQ Drive comments"),
     "Fetch HQ Drive comments": conn("Find HQ Drive URL rows"),
     "Find HQ Drive URL rows": conn("Expand HQ Tasks"),
-    "Expand HQ Tasks": conn("Fetch HQ Task comments"),
-    "Fetch HQ Task comments": conn("Fetch HQ Task blocks"),
-    "Fetch HQ Task blocks": conn("Parse HQ Drive confirmation"),
+    "Expand HQ Tasks": {
+        "main": [[
+            {"node": "Fetch HQ Task comments", "type": "main", "index": 0},
+            {"node": "Fetch HQ Task blocks", "type": "main", "index": 0},
+        ]]
+    },
+    "Fetch HQ Task comments": conn("Merge HQ Task extras"),
+    "Fetch HQ Task blocks": {
+        "main": [[{"node": "Merge HQ Task extras", "type": "main", "index": 1}]]
+    },
+    "Merge HQ Task extras": conn("Parse HQ Drive confirmation"),
     "Parse HQ Drive confirmation": conn("Find HQ Drive duplicates"),
     "Find HQ Drive duplicates": conn("Skip imported HQ Drive"),
     "Skip imported HQ Drive": conn("Has Doc text already"),

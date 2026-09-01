@@ -715,7 +715,7 @@
       "alwaysOutputData": true,
       "parameters": {
         "method": "GET",
-        "url": "={{ 'https://api.notion.com/v1/blocks/' + $('Expand HQ Tasks').item.json.id + '/children?page_size=100' }}",
+        "url": "={{ 'https://api.notion.com/v1/blocks/' + $json.id + '/children?page_size=100' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "notionApi",
         "sendHeaders": true,
@@ -739,6 +739,19 @@
           "id": "NOTION",
           "name": "Notion (Save 5 Hours HQ)"
         }
+      }
+    },
+    {
+      "id": "merge-hq-task-extras",
+      "name": "Merge HQ Task extras",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        620,
+        1480
+      ],
+      "parameters": {
+        "mode": "append"
       }
     },
     {
@@ -1474,13 +1487,7 @@
             "node": "Fetch HQ Task comments",
             "type": "main",
             "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch HQ Task comments": {
-      "main": [
-        [
+          },
           {
             "node": "Fetch HQ Task blocks",
             "type": "main",
@@ -1489,7 +1496,29 @@
         ]
       ]
     },
+    "Fetch HQ Task comments": {
+      "main": [
+        [
+          {
+            "node": "Merge HQ Task extras",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Fetch HQ Task blocks": {
+      "main": [
+        [
+          {
+            "node": "Merge HQ Task extras",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge HQ Task extras": {
       "main": [
         [
           {

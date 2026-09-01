@@ -115,6 +115,30 @@ BUILD_NOTION_CODE = TRANSFORM_JS + "\n\n" + """
 return $input.all().map((item) => ({ json: buildNotionPage(item.json) }));
 """.strip()
 
+EXTRACT_TOKEN_CODE = r"""
+const src = $input.first().json || {};
+const body = src.body && typeof src.body === 'object' && !Array.isArray(src.body)
+  ? src.body
+  : src;
+const token = String(body.googleAccessToken || body.access_token || '')
+  .trim()
+  .replace(/^Bearer\s+/i, '');
+if (!token) {
+  throw new Error('Apps Script must send googleAccessToken (ScriptApp.getOAuthToken).');
+}
+return [{ json: { ...body, googleAccessToken: token } }];
+""".strip()
+
+ALLOW_DRIVE_CODE = TRANSFORM_JS + "\n\n" + r"""
+const info = $input.first().json || {};
+const email = info.email || '';
+if (!driveCallerAllowed(email)) {
+  throw new Error('Drive caller is not on the Save 5 Hours allowlist');
+}
+const original = $('Extract Google token').first().json;
+return [{ json: original }];
+""".strip()
+
 NOTION_FILTER_BODY = (
     "={{ JSON.stringify({ filter: { property: 'Drive file ID', rich_text: "
     "{ equals: $json.driveFileId } }, page_size: 100 }) }}"
@@ -128,7 +152,7 @@ nodes = [
         "typeVersion": 1,
         "position": [-420, 140],
         "parameters": {
-            "content": "## Meeting notes → HQ Tasks\n\nGemini notes land in a **flat** Drive folder. This workflow polls **file created** and **file updated**, skips notes shorter than 80 characters, sends text to OpenRouter (`openrouter/free`), and writes HQ Tasks (Antoine / Martin / Roman).\n\n**You still need to Sign in** on credential `Google Drive (Save 5 Hours)`, then paste the folder ID on both Drive Trigger nodes.\n\nHost n8n 1.123.x. Webhook `{ \"fileId\" }` or `{ \"text\" }` is only a dry run.",
+            "content": "## Meeting notes → HQ Tasks\n\nSelf-hosted n8n has no Google Sign-in button. **Do not use Google Cloud Console unless you want native Drive Trigger later.**\n\nToday: Apps Script (`/webhook/meeting-notes-drive`) — the Meet organizer clicks Allow in Google, the script POSTs `{ fileId, text }`, OpenRouter writes HQ Tasks.\n\nOptional later: Custom OAuth2 in Google Cloud + Sign in on `Google Drive (Save 5 Hours)` + folder ID on both Drive Trigger nodes.",
             "height": 380,
             "width": 340,
             "color": 7,
@@ -222,6 +246,56 @@ nodes = [
                 "name": "Meeting notes webhook secret",
             }
         },
+    },
+    {
+        "id": "drive-apps-script",
+        "name": "Drive Apps Script",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [0, 880],
+        "webhookId": "meeting-notes-drive",
+        "parameters": {
+            "httpMethod": "POST",
+            "path": "meeting-notes-drive",
+            "responseMode": "onReceived",
+            "options": {},
+        },
+    },
+    {
+        "id": "extract-google-token",
+        "name": "Extract Google token",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [220, 880],
+        "parameters": {"jsCode": EXTRACT_TOKEN_CODE},
+    },
+    {
+        "id": "google-userinfo",
+        "name": "Google userinfo",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [440, 880],
+        "parameters": {
+            "url": "https://www.googleapis.com/oauth2/v2/userinfo",
+            "sendHeaders": True,
+            "headerParameters": {
+                "parameters": [
+                    {
+                        "name": "Authorization",
+                        "value": "=Bearer {{ $json.googleAccessToken }}",
+                    }
+                ]
+            },
+            "options": {},
+        },
+    },
+    {
+        "id": "allow-drive-caller",
+        "name": "Allow Drive caller",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [660, 880],
+        "parameters": {"jsCode": ALLOW_DRIVE_CODE},
     },
     {
         "id": "normalize",
@@ -555,6 +629,10 @@ connections = {
     "Google Drive Trigger": conn("Normalize file"),
     "Google Drive Trigger (updated)": conn("Normalize file"),
     "Webhook": conn("Normalize file"),
+    "Drive Apps Script": conn("Extract Google token"),
+    "Extract Google token": conn("Google userinfo"),
+    "Google userinfo": conn("Allow Drive caller"),
+    "Allow Drive caller": conn("Normalize file"),
     "Manual test": conn("Set test fileId"),
     "Set test fileId": conn("Normalize file"),
     "Normalize file": conn("Has inline notes"),

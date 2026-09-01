@@ -16,9 +16,11 @@ def main() -> None:
     assert "function verifyDrivePath(" in src
     assert "WEBHOOK_SECRET_PASTE" in src
     assert 'WEBHOOK_SECRET_PASTE = ""' in src
-    assert "/webhook/meeting-notes" in src
+    assert "/webhook/meeting-notes-drive" in src
+    assert "googleAccessToken" in src
+    assert "ScriptApp.getOAuthToken" in src
     assert "public-drive-doc" not in src
-    assert "meeting-notes-drive" not in src
+    assert "gcloud" not in src.lower()
     assert "gcloud" not in src.lower()
     assert "postWithRetry_" in src
     assert "Utilities.sleep" in src

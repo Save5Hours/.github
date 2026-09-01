@@ -11,40 +11,37 @@ Google Meet ends
 ```
 
 **Live n8n (1.123.75):** [https://n8n-production-192e.up.railway.app/](https://n8n-production-192e.up.railway.app/)  
-Account: `deevlylabs@gmail.com`. OpenRouter and Notion already work (a webhook dry-run wrote HQ Tasks). **Google Drive Sign in is the only missing step.**
+Account: `deevlylabs@gmail.com`. OpenRouter and Notion already work.
 
-Do **not** use the old Drive-setup page, Colab, gcloud verification codes, or bookmarklets. Those were workarounds from a previous agent. The real path is n8n Google Drive OAuth.
+Self-hosted n8n has **no** Google Sign-in button (that exists only on n8n Cloud). Do **not** use Drive-setup, Colab, gcloud codes, or bookmarklets.
 
-## What still works
+## Connect Google without Cloud Console (do this)
 
-| Piece | Status |
-| --- | --- |
-| n8n on Railway | Live, volume `/home/node/.n8n` |
-| OpenRouter | Live |
-| Notion HQ Tasks | Live |
-| Google Drive OAuth | **You click Sign in** (this agent cannot) |
-| Drive folder ID | Paste on both Drive Trigger nodes after Sign in |
+Google Apps Script uses the Google account you already have. No Client ID. No redirect URI.
 
-## Connect Google (do this once)
+1. Open [script.google.com](https://script.google.com) signed in as the Meet organizer.
+2. **New project** → paste [`apps-script-drive-webhook.js`](https://raw.githubusercontent.com/Save5Hours/.github/cursor/fix-drive-notion-automation-007c/automations/meeting-notes-to-tasks/scripts/apps-script-drive-webhook.js).
+3. Select function **verifyDrivePath** → **Run**.
+4. Click **Allow** when Google asks for Drive + Docs.
+5. Open **Executions**. You should see `HTTP 200`, `FOLDER_URL`, and `FILE_ID`.
+6. HQ Tasks should get a row with that Drive file ID (not `inline-*`). Leave the 1-minute trigger on.
 
-1. Open [n8n](https://n8n-production-192e.up.railway.app/) and log in.
-2. Left sidebar → **Credentials**.
-3. Open **Google Drive (Save 5 Hours)** (or create **Google Drive OAuth2 API** with that name).
-4. If Client ID / Secret are empty, create them in [Google Cloud Console](https://console.cloud.google.com/):
-   - Enable **Google Drive API** and **Google Docs API**.
-   - OAuth consent screen → **Internal** (Workspace).
-   - Credentials → OAuth client ID → **Web application**.
-   - Authorized redirect URI (copy exactly):
+n8n checks the Google email against `@save5hours.ch` plus known organizer Gmails. The script POSTs `{ fileId, text, googleAccessToken }` to `/webhook/meeting-notes-drive`.
 
-     `https://n8n-production-192e.up.railway.app/rest/oauth2-credential/callback`
-   - Paste Client ID and Client Secret into the n8n credential.
-5. Click **Sign in with Google**. Use the Meet organizer account (`@save5hours.ch` or the Gmail that owns the Gemini notes).
-6. Allow Drive + Docs.
-7. In Drive, open the notes folder. The URL looks like `https://drive.google.com/drive/folders/THE_FOLDER_ID`. Copy `THE_FOLDER_ID`.
-8. Open workflow **Meeting notes → HQ Tasks**. On **both** nodes **Google Drive Trigger** and **Google Drive Trigger (updated)**, paste that folder ID. Notes must sit **directly** in that folder (the trigger does not see Meet Recordings subfolders). Shortcuts into the folder are OK.
-9. Save. Make sure the workflow is **Active**.
+## Optional later: native Drive Trigger (needs Google Cloud Console)
 
-Then drop a Google Doc in that folder (or wait for the next Meet). Check **Executions**. HQ Tasks should appear with Origin = Meeting.
+n8n Cloud users click **Sign in with Google**. Self-hosted users must create a **Custom OAuth2** app ([n8n docs](https://docs.n8n.io/integrations/builtin/credentials/google/oauth-single-service/)):
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → new project → enable **Drive API** + **Docs API**.
+2. OAuth consent → **Internal** (Workspace).
+3. Credentials → OAuth client ID → **Web application**.
+4. Redirect URI from the n8n credential panel (must match exactly), typically:
+
+   `https://n8n-production-192e.up.railway.app/rest/oauth2-credential/callback`
+5. Paste Client ID + Secret into n8n **Google Drive (Save 5 Hours)** → **Sign in with Google**.
+6. Put the folder ID on both Drive Trigger nodes. Notes must sit **directly** in that folder.
+
+Service accounts are a worse fit here (no My Drive quota; Drive Trigger wants OAuth2).
 
 ## Import this cleaned workflow
 
@@ -57,12 +54,9 @@ The live instance may still have the old 50-node workaround graph. After this PR
 
 Keep the existing credentials. Do not rotate `N8N_ENCRYPTION_KEY`. Do not drop the Railway volume.
 
-## Nested Meet Recordings folders (optional)
+## Nested Meet Recordings folders
 
-If Gemini keeps writing `Meet Recordings / <meeting> / notes`, either:
-
-- Put a shortcut to each Doc in the flat folder n8n watches, or
-- Deploy `scripts/apps-script-drive-webhook.js` as the Meet organizer. It walks subfolders and POSTs `{ fileId, text }` to `/webhook/meeting-notes` (needs the webhook secret).
+The Apps Script path already walks subfolders. If you later switch to native Drive Trigger, put shortcuts into the watched folder — the trigger does not see children.
 
 ## Webhook dry-run (optional)
 

@@ -1,22 +1,21 @@
 /**
- * Optional helper when Gemini notes sit in Meet Recordings subfolders.
- * n8n's Google Drive Trigger only sees files sitting directly in one folder.
+ * Connect Drive to self-hosted n8n WITHOUT Google Cloud Console.
  *
- * The normal path is: Sign in on n8n Google Drive OAuth and watch a flat folder.
- * Use this script only if notes stay nested.
+ * n8n Cloud has a Google Sign-in button. Railway n8n does not. This script
+ * uses Google's own login (script.google.com → Run → Allow).
  *
- * Setup (Meet organizer):
+ * Setup (Meet organizer Google account):
  * 1. https://script.google.com → New project → paste this file
- * 2. Set WEBHOOK_SECRET_PASTE to the n8n Header Auth value
- *    (credential "Meeting notes webhook secret")
- * 3. Optional script properties: FOLDER_ID or FOLDER_NAME (default Meet Recordings)
- * 4. Run verifyDrivePath once, authorize Drive + Docs, then keep the 1-minute trigger
+ * 2. Run verifyDrivePath → click Allow for Drive + Docs
+ * 3. Execution log shows FOLDER_URL / FILE_ID
  *
- * It POSTs { fileId, name, text } to /webhook/meeting-notes.
+ * It POSTs { fileId, text, googleAccessToken } to /webhook/meeting-notes-drive.
+ * n8n checks the Google email against the Save 5 Hours allowlist.
+ * No WEBHOOK_SECRET. No Client ID. No redirect URI.
  */
 var MIN_NOTE_CHARS = 80;
 var DEFAULT_WEBHOOK =
-  "https://n8n-production-192e.up.railway.app/webhook/meeting-notes";
+  "https://n8n-production-192e.up.railway.app/webhook/meeting-notes-drive";
 var DEFAULT_FOLDER_NAME = "Meet Recordings";
 var WEBHOOK_SECRET_PASTE = "";
 var VERIFY_FOLDER_NAME = "Gemini meeting notes (n8n)";
@@ -144,7 +143,8 @@ function postWithRetry_(url, headers, payload) {
 }
 
 function postNote_(webhookUrl, secret, file, text) {
-  const headers = {};
+  const token = ScriptApp.getOAuthToken();
+  const headers = { Authorization: "Bearer " + token };
   const pasted = String(secret || "").trim();
   if (pasted) headers["X-Webhook-Secret"] = pasted;
   const payload = JSON.stringify({
@@ -153,6 +153,7 @@ function postNote_(webhookUrl, secret, file, text) {
     mimeType: file.getMimeType(),
     webViewLink: file.getUrl(),
     text: text,
+    googleAccessToken: token,
   });
   return postWithRetry_(webhookUrl, headers, payload);
 }

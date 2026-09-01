@@ -57,9 +57,10 @@ test('Apps Script VERIFY_NOTES matches drive-verify fixture', () => {
   const src = readFileSync(join(root, 'scripts/apps-script-drive-webhook.js'), 'utf8');
   assert.match(src, /function verifyDrivePath\(/);
   assert.match(src, /WEBHOOK_SECRET_PASTE/);
-  assert.match(src, /\/webhook\/meeting-notes/);
+  assert.match(src, /\/webhook\/meeting-notes-drive/);
+  assert.match(src, /googleAccessToken/);
+  assert.match(src, /ScriptApp\.getOAuthToken/);
   assert.doesNotMatch(src, /public-drive-doc/);
-  assert.doesNotMatch(src, /meeting-notes-drive/);
   assert.match(src, /not registered/i);
   assert.match(src, /Utilities\.sleep/);
   for (const line of notes.split('\n').filter(Boolean)) {

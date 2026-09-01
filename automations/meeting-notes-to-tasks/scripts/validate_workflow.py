@@ -28,6 +28,10 @@ required = [
     "Split tasks",
     "Build Notion page",
     "Create Notion task",
+    "Drive Apps Script",
+    "Extract Google token",
+    "Google userinfo",
+    "Allow Drive caller",
 ]
 missing = [name for name in required if name not in nodes]
 if missing:
@@ -36,7 +40,6 @@ if missing:
 forbidden = [
     "Public Drive Doc",
     "HQ Drive URL poll",
-    "Drive Apps Script",
     "Redirect to Drive setup",
 ]
 present_forbidden = [name for name in forbidden if name in nodes]
@@ -69,6 +72,16 @@ assert conns["Split tasks"]["main"][0][0]["node"] == "Build Notion page"
 assert conns["Build Notion page"]["main"][0][0]["node"] == "Create Notion task"
 assert nodes["Webhook"]["parameters"]["authentication"] == "headerAuth"
 assert nodes["Webhook"]["parameters"]["path"] == "meeting-notes"
+assert nodes["Drive Apps Script"]["parameters"]["path"] == "meeting-notes-drive"
+assert "authentication" not in nodes["Drive Apps Script"]["parameters"] or not nodes["Drive Apps Script"]["parameters"].get("authentication")
+assert conns["Drive Apps Script"]["main"][0][0]["node"] == "Extract Google token"
+assert conns["Extract Google token"]["main"][0][0]["node"] == "Google userinfo"
+assert conns["Google userinfo"]["main"][0][0]["node"] == "Allow Drive caller"
+assert conns["Allow Drive caller"]["main"][0][0]["node"] == "Normalize file"
+assert nodes["Google userinfo"]["parameters"]["url"] == "https://www.googleapis.com/oauth2/v2/userinfo"
+allow = nodes["Allow Drive caller"]["parameters"]["jsCode"]
+if "driveCallerAllowed" not in allow:
+    raise SystemExit("Allow Drive caller must check driveCallerAllowed")
 
 parse = nodes["Parse and map assignees"]["parameters"]["jsCode"]
 for user_id in (

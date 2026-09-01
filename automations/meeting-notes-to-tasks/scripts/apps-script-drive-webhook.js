@@ -6,8 +6,9 @@
  *
  * Setup (Meet organizer Google account):
  * 1. https://script.google.com → New project → paste this file
- * 2. Run verifyDrivePath → click Allow for Drive + Docs
- * 3. Execution log shows FOLDER_URL / FILE_ID
+ * 2. Run verifyDrivePath → click Allow for Drive + Docs (once)
+ * 3. Run backfillAllMeetingNotes → sends every existing Doc in the folder
+ * 4. Leave the 1-minute trigger on (installMinuteTrigger) for new meetings
  *
  * It POSTs { fileId, text, googleAccessToken } to /webhook/meeting-notes-drive.
  * n8n checks the Google email against the Save 5 Hours allowlist.
@@ -80,39 +81,109 @@ function verifyDrivePath() {
 }
 
 function checkNewMeetingNotes() {
+  const lastIso =
+    PropertiesService.getScriptProperties().getProperty("lastChecked") ||
+    new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+  syncFolderDocs_({
+    sinceMs: Date.parse(lastIso),
+    limit: 20,
+    sleepMs: 0,
+    skipVerifyDocs: true,
+  });
+  PropertiesService.getScriptProperties().setProperty(
+    "lastChecked",
+    new Date().toISOString(),
+  );
+}
+
+/** One-time: every Google Doc already in Meet Recordings (and subfolders). */
+function backfillAllMeetingNotes() {
+  const result = syncFolderDocs_({
+    sinceMs: 0,
+    limit: 25,
+    sleepMs: 2000,
+    skipVerifyDocs: true,
+  });
+  installMinuteTrigger();
+  if (result.remaining === 0 && result.failed === 0) {
+    PropertiesService.getScriptProperties().setProperty(
+      "lastChecked",
+      new Date().toISOString(),
+    );
+  }
+  Logger.log("BACKFILL scanned=" + result.scanned);
+  Logger.log("BACKFILL posted=" + result.posted);
+  Logger.log("BACKFILL skipped=" + result.skipped);
+  Logger.log("BACKFILL failed=" + result.failed);
+  Logger.log("BACKFILL remaining=" + result.remaining);
+  if (result.remaining > 0) {
+    Logger.log("Run backfillAllMeetingNotes again for the rest.");
+  }
+}
+
+function syncFolderDocs_(opts) {
   const props = PropertiesService.getScriptProperties();
   const webhookUrl = props.getProperty("WEBHOOK_URL") || DEFAULT_WEBHOOK;
   const secret = webhookSecret_(props);
   const folder = resolveFolder_(props);
-
-  const lastIso =
-    props.getProperty("lastChecked") ||
-    new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-  const lastMs = Date.parse(lastIso);
-  const nowIso = new Date().toISOString();
+  const sinceMs = Number(opts.sinceMs || 0);
+  const limit = Number(opts.limit || 25);
+  const sleepMs = Number(opts.sleepMs || 0);
+  const skipVerify = opts.skipVerifyDocs !== false;
   const docs = [];
-
   walkFolder_(folder, docs);
+
+  const result = { scanned: 0, posted: 0, skipped: 0, failed: 0, remaining: 0 };
+  const pending = [];
 
   docs.forEach(function (file) {
     if (file.getMimeType() !== MimeType.GOOGLE_DOCS) return;
-    if (file.getLastUpdated().getTime() <= lastMs) return;
+    result.scanned += 1;
+    const name = String(file.getName() || "");
+    if (skipVerify && name.indexOf(VERIFY_DOC_NAME) === 0) {
+      result.skipped += 1;
+      return;
+    }
+    if (sinceMs && file.getLastUpdated().getTime() <= sinceMs) {
+      result.skipped += 1;
+      return;
+    }
+    pending.push(file);
+  });
+
+  pending.forEach(function (file) {
+    if (result.posted + result.failed >= limit) {
+      result.remaining += 1;
+      return;
+    }
 
     const text = DocumentApp.openById(file.getId()).getBody().getText();
     const compact = compact_(text);
-    if (compact.length < MIN_NOTE_CHARS) return;
+    if (compact.length < MIN_NOTE_CHARS) {
+      result.skipped += 1;
+      return;
+    }
 
     const fp = fingerprint_(compact);
     const fpKey = "fp_" + file.getId();
-    if (props.getProperty(fpKey) === fp) return;
+    if (props.getProperty(fpKey) === fp) {
+      result.skipped += 1;
+      return;
+    }
 
     const code = postNote_(webhookUrl, secret, file, text);
+    Logger.log("HTTP " + code + " " + file.getName() + " " + file.getId());
     if (code >= 200 && code < 300) {
       props.setProperty(fpKey, fp);
+      result.posted += 1;
+      if (sleepMs > 0) Utilities.sleep(sleepMs);
+    } else {
+      result.failed += 1;
     }
   });
 
-  props.setProperty("lastChecked", nowIso);
+  props.setProperty("FOLDER_ID", folder.getId());
+  return result;
 }
 
 function postWithRetry_(url, headers, payload) {

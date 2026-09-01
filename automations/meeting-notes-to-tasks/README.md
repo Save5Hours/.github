@@ -13,7 +13,7 @@ Google Meet ends
 **Live n8n (1.123.75):** [https://n8n-production-192e.up.railway.app/](https://n8n-production-192e.up.railway.app/)  
 Account: `deevlylabs@gmail.com`. OpenRouter and Notion already work.
 
-The live canvas is still the old workaround graph until someone overwrites it. Prefer `python3 scripts/n8n-ssh-publish.py` (needs Railway login) or, in the **open** workflow editor only: ⋮ → **Import from URL** → this JSON. Do not import from the workflow list (that creates a duplicate with the same webhooks).
+The live canvas is the cleaned 27-node workflow. OpenRouter and Notion already work.
 
 Self-hosted n8n has **no** Google Sign-in button (that exists only on n8n Cloud). Do **not** use Drive-setup, Colab, gcloud codes, or bookmarklets.
 
@@ -22,13 +22,12 @@ Self-hosted n8n has **no** Google Sign-in button (that exists only on n8n Cloud)
 Google Apps Script uses the Google account you already have. No Client ID. No redirect URI.
 
 1. Open [script.google.com](https://script.google.com) signed in as the Meet organizer.
-2. **New project** → paste [`apps-script-drive-webhook.js`](https://raw.githubusercontent.com/Save5Hours/.github/cursor/fix-drive-notion-automation-007c/automations/meeting-notes-to-tasks/scripts/apps-script-drive-webhook.js).
-3. Select function **verifyDrivePath** → **Run**.
-4. Click **Allow** when Google asks for Drive + Docs.
-5. Open **Executions**. You should see `HTTP 200`, `FOLDER_URL`, and `FILE_ID`.
-6. HQ Tasks should get a row with that Drive file ID (not `inline-*`). Leave the 1-minute trigger on.
+2. Paste [`apps-script-drive-webhook.js`](https://raw.githubusercontent.com/Save5Hours/.github/cursor/fix-drive-notion-automation-007c/automations/meeting-notes-to-tasks/scripts/apps-script-drive-webhook.js) (replace the old file).
+3. Run **verifyDrivePath** once (Allow Drive + Docs).
+4. Run **backfillAllMeetingNotes** once. That POSTs every existing Google Doc in `Meet Recordings` (subfolders included). If the log says `remaining>0`, run it again.
+5. Leave the 1-minute trigger on. New or updated Docs go to n8n by themselves.
 
-n8n checks the Google email against `@save5hours.ch` plus known organizer Gmails. The script POSTs `{ fileId, text, googleAccessToken }` to `/webhook/meeting-notes-drive`.
+n8n skips action titles that already exist for the same Drive file ID. Verification Docs named `Gemini notes — Drive path verification` are skipped on backfill.
 
 ## Optional later: native Drive Trigger (needs Google Cloud Console)
 

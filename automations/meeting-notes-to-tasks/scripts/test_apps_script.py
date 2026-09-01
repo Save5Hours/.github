@@ -13,7 +13,8 @@ NOTES = ROOT / "fixtures" / "drive-verify-notes.txt"
 def main() -> None:
     src = SCRIPT.read_text(encoding="utf-8")
     notes = NOTES.read_text(encoding="utf-8").strip()
-    assert "function backfillAllMeetingNotes(" in src
+    assert "everyMinutes(5)" in src
+    assert "function installSyncTrigger(" in src
     assert "function syncFolderDocs_(" in src
     assert "function checkNewMeetingNotes(" in src
     assert "WEBHOOK_SECRET_PASTE" in src

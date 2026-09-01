@@ -8,7 +8,9 @@
  * 1. https://script.google.com → New project → paste this file
  * 2. Run verifyDrivePath → click Allow for Drive + Docs (once)
  * 3. Run backfillAllMeetingNotes → sends every existing Doc in the folder
- * 4. Leave the 1-minute trigger on (installMinuteTrigger) for new meetings
+ * 4. Run installMinuteTrigger once. It checks Drive every 5 minutes.
+ *    n8n only runs when a Doc is actually sent. Watch script.google.com
+ *    → Executions (clock), not n8n, for the empty checks.
  *
  * It POSTs { fileId, text, googleAccessToken } to /webhook/meeting-notes-drive.
  * n8n checks the Google email against the Save 5 Hours allowlist.
@@ -35,7 +37,13 @@ function installMinuteTrigger() {
       ScriptApp.deleteTrigger(trigger);
     }
   });
-  ScriptApp.newTrigger("checkNewMeetingNotes").timeBased().everyMinutes(1).create();
+  // 1 minute is allowed but noisy. 5 minutes is enough for Meet notes.
+  ScriptApp.newTrigger("checkNewMeetingNotes").timeBased().everyMinutes(5).create();
+  Logger.log("Installed checkNewMeetingNotes every 5 minutes");
+}
+
+function installSyncTrigger() {
+  installMinuteTrigger();
 }
 
 function listCandidateFolders() {
@@ -84,7 +92,7 @@ function checkNewMeetingNotes() {
   const lastIso =
     PropertiesService.getScriptProperties().getProperty("lastChecked") ||
     new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-  syncFolderDocs_({
+  const result = syncFolderDocs_({
     sinceMs: Date.parse(lastIso),
     limit: 20,
     sleepMs: 0,
@@ -93,6 +101,16 @@ function checkNewMeetingNotes() {
   PropertiesService.getScriptProperties().setProperty(
     "lastChecked",
     new Date().toISOString(),
+  );
+  Logger.log(
+    "SYNC posted=" +
+      result.posted +
+      " skipped=" +
+      result.skipped +
+      " failed=" +
+      result.failed +
+      " remaining=" +
+      result.remaining,
   );
 }
 

@@ -11,7 +11,6 @@ TASKS_DB = "3bc0b26fcc4e8057b7ade1cdf5a67e6e"
 ANTOINE = "3bcd872b-594c-8157-a68b-0002ec224796"
 MARTIN = "3bcd872b-594c-81b9-acfe-0002ebe41550"
 ROMAN = "3bcd872b-594c-81a9-bf7d-00029eb21064"
-DRIVE_FOLDER_PLACEHOLDER = "REPLACE_ME_GEMINI_NOTES_FOLDER_ID"
 GOOGLE_CREDS = {
     "googleDriveOAuth2Api": {
         "id": "GOOGLE_DRIVE",
@@ -156,49 +155,11 @@ nodes = [
         "typeVersion": 1,
         "position": [-420, 140],
         "parameters": {
-            "content": "## Meeting notes → HQ Tasks\n\nSelf-hosted n8n has no Google Sign-in button. **Do not use Google Cloud Console unless you want native Drive Trigger later.**\n\nToday: Apps Script (`/webhook/meeting-notes-drive`) — the Meet organizer clicks Allow in Google, the script POSTs `{ fileId, text }`, OpenRouter writes HQ Tasks.\n\nOptional later: Custom OAuth2 in Google Cloud + Sign in on `Google Drive (Save 5 Hours)` + folder ID on both Drive Trigger nodes.",
+            "content": "## Meeting notes → HQ Tasks\n\nApps Script is the Drive sync (no Google Cloud Console).\n\n1. Run **backfillAllMeetingNotes** once for existing Docs.\n2. The time trigger (every 5 minutes) POSTs new/updated Docs to `/webhook/meeting-notes-drive`.\n3. n8n only runs when Apps Script sends a Doc — you will **not** see an n8n execution every 5 minutes if nothing changed.\n\nLook at script.google.com → Executions for the clock. n8n Executions only when HQ Tasks should be written.",
             "height": 380,
             "width": 340,
             "color": 7,
         },
-    },
-    {
-        "id": "drive-trigger",
-        "name": "Google Drive Trigger",
-        "type": "n8n-nodes-base.googleDriveTrigger",
-        "typeVersion": 1,
-        "position": [0, 200],
-        "parameters": {
-            "pollTimes": {"item": [{"mode": "everyMinute"}]},
-            "triggerOn": "specificFolder",
-            "folderToWatch": {
-                "__rl": True,
-                "value": DRIVE_FOLDER_PLACEHOLDER,
-                "mode": "id",
-            },
-            "event": "fileCreated",
-            "options": {"fileType": "application/vnd.google-apps.document"},
-        },
-        "credentials": GOOGLE_CREDS,
-    },
-    {
-        "id": "drive-trigger-updated",
-        "name": "Google Drive Trigger (updated)",
-        "type": "n8n-nodes-base.googleDriveTrigger",
-        "typeVersion": 1,
-        "position": [0, 40],
-        "parameters": {
-            "pollTimes": {"item": [{"mode": "everyMinute"}]},
-            "triggerOn": "specificFolder",
-            "folderToWatch": {
-                "__rl": True,
-                "value": DRIVE_FOLDER_PLACEHOLDER,
-                "mode": "id",
-            },
-            "event": "fileUpdated",
-            "options": {"fileType": "application/vnd.google-apps.document"},
-        },
-        "credentials": GOOGLE_CREDS,
     },
     {
         "id": "manual-trigger",
@@ -630,8 +591,6 @@ def conn(*names: str) -> dict:
 
 
 connections = {
-    "Google Drive Trigger": conn("Normalize file"),
-    "Google Drive Trigger (updated)": conn("Normalize file"),
     "Webhook": conn("Normalize file"),
     "Drive Apps Script": conn("Extract Google token"),
     "Extract Google token": conn("Google userinfo"),

@@ -25,7 +25,7 @@ Google Apps Script uses the Google account you already have. No Client ID. No re
 2. Paste [`apps-script-drive-webhook.js`](https://raw.githubusercontent.com/Save5Hours/.github/cursor/fix-drive-notion-automation-007c/automations/meeting-notes-to-tasks/scripts/apps-script-drive-webhook.js) (replace the old file).
 3. Run **verifyDrivePath** once (Allow Drive + Docs).
 4. Run **backfillAllMeetingNotes** once. That POSTs every existing Google Doc in `Meet Recordings` (subfolders included). If the log says `remaining>0`, run it again.
-5. Leave the 1-minute trigger on. New or updated Docs go to n8n by themselves.
+5. Run **installMinuteTrigger** once (checks Drive every **5 minutes**). New or updated Docs go to n8n by themselves. n8n only executes when a Doc is posted — empty checks appear in script.google.com → Executions, not in n8n.
 
 n8n skips action titles that already exist for the same Drive file ID. Verification Docs named `Gemini notes — Drive path verification` are skipped on backfill.
 

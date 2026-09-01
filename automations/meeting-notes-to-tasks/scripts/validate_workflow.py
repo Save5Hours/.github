@@ -13,8 +13,6 @@ data = json.loads(path.read_text(encoding="utf-8"))
 
 nodes = {n["name"]: n for n in data["nodes"]}
 required = [
-    "Google Drive Trigger",
-    "Google Drive Trigger (updated)",
     "Webhook",
     "Manual test",
     "Set test fileId",
@@ -55,13 +53,11 @@ for src, spec in data["connections"].items():
             if link["node"] not in node_names:
                 raise SystemExit(f"connection target missing: {link['node']}")
 
-created = nodes["Google Drive Trigger"]["parameters"]["event"]
-updated = nodes["Google Drive Trigger (updated)"]["parameters"]["event"]
-if created != "fileCreated" or updated != "fileUpdated":
-    raise SystemExit(f"unexpected Drive events: {created} {updated}")
-
+created = None
 conns = data["connections"]
-assert "Google Drive Trigger" in conns
+assert "Google Drive Trigger" not in nodes
+assert "Google Drive Trigger (updated)" not in nodes
+assert "Google Drive Trigger" not in conns
 assert "Webhook" in conns
 assert conns["Normalize file"]["main"][0][0]["node"] == "Has inline notes"
 assert conns["Has inline notes"]["main"][0][0]["node"] == "Use inline notes"
@@ -106,12 +102,8 @@ if "$input.all()" not in build_code:
 or_url = nodes["OpenRouter"]["parameters"]["url"]
 assert or_url == "https://openrouter.ai/api/v1/chat/completions"
 
-folder = nodes["Google Drive Trigger"]["parameters"]["folderToWatch"]["value"]
-assert folder == "REPLACE_ME_GEMINI_NOTES_FOLDER_ID"
-folder_updated = nodes["Google Drive Trigger (updated)"]["parameters"]["folderToWatch"]["value"]
-assert folder_updated == "REPLACE_ME_GEMINI_NOTES_FOLDER_ID"
-
 if len(nodes) > 32:
     raise SystemExit(f"workflow grew too large ({len(nodes)} nodes); keep the simple graph")
 
+print(f"ok: {len(nodes)} nodes, {len(conns)} connection sources, {path}")
 sys.exit(0)

@@ -12,80 +12,10 @@
         140
       ],
       "parameters": {
-        "content": "## Meeting notes \u2192 HQ Tasks\n\nSelf-hosted n8n has no Google Sign-in button. **Do not use Google Cloud Console unless you want native Drive Trigger later.**\n\nToday: Apps Script (`/webhook/meeting-notes-drive`) \u2014 the Meet organizer clicks Allow in Google, the script POSTs `{ fileId, text }`, OpenRouter writes HQ Tasks.\n\nOptional later: Custom OAuth2 in Google Cloud + Sign in on `Google Drive (Save 5 Hours)` + folder ID on both Drive Trigger nodes.",
+        "content": "## Meeting notes \u2192 HQ Tasks\n\nApps Script is the Drive sync (no Google Cloud Console).\n\n1. Run **backfillAllMeetingNotes** once for existing Docs.\n2. The time trigger (every 5 minutes) POSTs new/updated Docs to `/webhook/meeting-notes-drive`.\n3. n8n only runs when Apps Script sends a Doc \u2014 you will **not** see an n8n execution every 5 minutes if nothing changed.\n\nLook at script.google.com \u2192 Executions for the clock. n8n Executions only when HQ Tasks should be written.",
         "height": 380,
         "width": 340,
         "color": 7
-      }
-    },
-    {
-      "id": "drive-trigger",
-      "name": "Google Drive Trigger",
-      "type": "n8n-nodes-base.googleDriveTrigger",
-      "typeVersion": 1,
-      "position": [
-        0,
-        200
-      ],
-      "parameters": {
-        "pollTimes": {
-          "item": [
-            {
-              "mode": "everyMinute"
-            }
-          ]
-        },
-        "triggerOn": "specificFolder",
-        "folderToWatch": {
-          "__rl": true,
-          "value": "REPLACE_ME_GEMINI_NOTES_FOLDER_ID",
-          "mode": "id"
-        },
-        "event": "fileCreated",
-        "options": {
-          "fileType": "application/vnd.google-apps.document"
-        }
-      },
-      "credentials": {
-        "googleDriveOAuth2Api": {
-          "id": "GOOGLE_DRIVE",
-          "name": "Google Drive (Save 5 Hours)"
-        }
-      }
-    },
-    {
-      "id": "drive-trigger-updated",
-      "name": "Google Drive Trigger (updated)",
-      "type": "n8n-nodes-base.googleDriveTrigger",
-      "typeVersion": 1,
-      "position": [
-        0,
-        40
-      ],
-      "parameters": {
-        "pollTimes": {
-          "item": [
-            {
-              "mode": "everyMinute"
-            }
-          ]
-        },
-        "triggerOn": "specificFolder",
-        "folderToWatch": {
-          "__rl": true,
-          "value": "REPLACE_ME_GEMINI_NOTES_FOLDER_ID",
-          "mode": "id"
-        },
-        "event": "fileUpdated",
-        "options": {
-          "fileType": "application/vnd.google-apps.document"
-        }
-      },
-      "credentials": {
-        "googleDriveOAuth2Api": {
-          "id": "GOOGLE_DRIVE",
-          "name": "Google Drive (Save 5 Hours)"
-        }
       }
     },
     {
@@ -624,28 +554,6 @@
     }
   ],
   "connections": {
-    "Google Drive Trigger": {
-      "main": [
-        [
-          {
-            "node": "Normalize file",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Google Drive Trigger (updated)": {
-      "main": [
-        [
-          {
-            "node": "Normalize file",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Webhook": {
       "main": [
         [

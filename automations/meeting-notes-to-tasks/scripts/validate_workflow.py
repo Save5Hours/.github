@@ -39,6 +39,7 @@ required = [
     "Find HQ Drive URL rows",
     "Expand HQ Tasks",
     "Fetch HQ Task comments",
+    "Fetch HQ Task blocks",
     "Parse HQ Drive confirmation",
     "Find HQ Drive duplicates",
     "Skip imported HQ Drive",
@@ -103,7 +104,8 @@ assert conns["Fetch HQ Drive blocks"]["main"][0][0]["node"] == "Fetch HQ Drive c
 assert conns["Fetch HQ Drive comments"]["main"][0][0]["node"] == "Find HQ Drive URL rows"
 assert conns["Find HQ Drive URL rows"]["main"][0][0]["node"] == "Expand HQ Tasks"
 assert conns["Expand HQ Tasks"]["main"][0][0]["node"] == "Fetch HQ Task comments"
-assert conns["Fetch HQ Task comments"]["main"][0][0]["node"] == "Parse HQ Drive confirmation"
+assert conns["Fetch HQ Task comments"]["main"][0][0]["node"] == "Fetch HQ Task blocks"
+assert conns["Fetch HQ Task blocks"]["main"][0][0]["node"] == "Parse HQ Drive confirmation"
 assert conns["Parse HQ Drive confirmation"]["main"][0][0]["node"] == "Find HQ Drive duplicates"
 assert conns["Find HQ Drive duplicates"]["main"][0][0]["node"] == "Skip imported HQ Drive"
 assert conns["Skip imported HQ Drive"]["main"][0][0]["node"] == "Has Doc text already"
@@ -116,6 +118,8 @@ if "hqPastedNotes" not in hq_parse:
     raise SystemExit("Parse HQ Drive confirmation must use pasted HQ notes (hqPastedNotes)")
 if "Fetch HQ Task comments" not in hq_parse:
     raise SystemExit("Parse HQ Drive confirmation must merge comments from every HQ Task")
+if "Fetch HQ Task blocks" not in hq_parse:
+    raise SystemExit("Parse HQ Drive confirmation must merge bodies from every HQ Task")
 merge_public = nodes["Merge public Doc"]["parameters"]["jsCode"]
 if "Parse HQ Drive confirmation" not in merge_public:
     raise SystemExit("Merge public Doc must read Parse HQ Drive confirmation meta")

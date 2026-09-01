@@ -173,8 +173,17 @@ try {
 } catch {
   extraComments = [];
 }
+let extraBlocks = [];
+try {
+  extraBlocks = $('Fetch HQ Task blocks').all().flatMap((item) => {
+    const json = item.json || {};
+    return json.results || [];
+  });
+} catch {
+  extraBlocks = [];
+}
 const extra = {
-  blocks,
+  blocks: { results: [...(blocks.results || []), ...extraBlocks] },
   comments: { results: [...(confirmComments.results || []), ...extraComments] },
 };
 const parsed = pickHqDrivePayload(page, extra, query.results || []);
@@ -763,6 +772,31 @@ nodes = [
         "credentials": NOTION_CREDS,
     },
     {
+        "id": "fetch-hq-task-blocks",
+        "name": "Fetch HQ Task blocks",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [600, 1480],
+        "alwaysOutputData": True,
+        "parameters": {
+            "method": "GET",
+            "url": "={{ 'https://api.notion.com/v1/blocks/' + $('Expand HQ Tasks').item.json.id + '/children?page_size=100' }}",
+            "authentication": "predefinedCredentialType",
+            "nodeCredentialType": "notionApi",
+            "sendHeaders": True,
+            "headerParameters": {
+                "parameters": [
+                    {"name": "Notion-Version", "value": "2022-06-28"},
+                ]
+            },
+            "options": {"timeout": 30000},
+        },
+        "retryOnFail": True,
+        "maxTries": 2,
+        "waitBetweenTries": 2000,
+        "credentials": NOTION_CREDS,
+    },
+    {
         "id": "parse-hq-drive-confirmation",
         "name": "Parse HQ Drive confirmation",
         "type": "n8n-nodes-base.code",
@@ -1173,7 +1207,8 @@ connections = {
     "Fetch HQ Drive comments": conn("Find HQ Drive URL rows"),
     "Find HQ Drive URL rows": conn("Expand HQ Tasks"),
     "Expand HQ Tasks": conn("Fetch HQ Task comments"),
-    "Fetch HQ Task comments": conn("Parse HQ Drive confirmation"),
+    "Fetch HQ Task comments": conn("Fetch HQ Task blocks"),
+    "Fetch HQ Task blocks": conn("Parse HQ Drive confirmation"),
     "Parse HQ Drive confirmation": conn("Find HQ Drive duplicates"),
     "Find HQ Drive duplicates": conn("Skip imported HQ Drive"),
     "Skip imported HQ Drive": conn("Has Doc text already"),

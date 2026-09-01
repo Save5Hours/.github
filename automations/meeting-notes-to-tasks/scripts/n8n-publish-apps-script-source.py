@@ -127,6 +127,7 @@ def setup_html(source: str) -> str:
       'const parts=location.pathname.split("/");',
       'let id="";',
       'for(let i=0;i<parts.length;i++){if(parts[i]==="d"&&parts[i+1]&&parts[i+1].length>=10)id=parts[i+1];}',
+      'if(!id){try{id=new URLSearchParams(location.search).get("id")||"";}catch(e){id="";}}',
       'if(!id){alert("Open a Google Doc tab first (docs.google.com).");return;}',
       'const res=await fetch("https://docs.google.com/document/d/"+id+"/export?format=txt",{credentials:"include"});',
       'const text=await res.text();',
@@ -327,6 +328,9 @@ def main() -> int:
             return 1
         if 'id="bookmarklet"' not in page or "Send this Doc to HQ Tasks" not in page:
             print("blocked: drive-setup page missing bookmarklet")
+            return 1
+        if "URLSearchParams" not in page or 'get("id")' not in page:
+            print("blocked: bookmarklet must read docs.google.com/open?id=")
             return 1
         if 'id="doctext"' not in page:
             print("blocked: drive-setup page missing private-Doc text paste")

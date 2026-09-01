@@ -3,7 +3,13 @@
 
 from __future__ import annotations
 
-from drive_ids import file_id_from, folder_id_from, is_real_drive_id, parse_drive_refs
+from drive_ids import (
+    export_looks_like_html,
+    file_id_from,
+    folder_id_from,
+    is_real_drive_id,
+    parse_drive_refs,
+)
 
 
 def main() -> None:
@@ -25,6 +31,8 @@ def main() -> None:
     assert parse_drive_refs("1BareFileIdFromHqTask")["file_id"] == "1BareFileIdFromHqTask"
     assert parse_drive_refs("apps-script-source")["file_id"] == ""
     assert parse_drive_refs("drive-setup")["file_id"] == ""
+    assert not export_looks_like_html("Gemini notes — team lunch\nAntoine brings beers.")
+    assert export_looks_like_html("<!DOCTYPE html><html><body>Google Docs</body></html>")
     print("drive id parse ok")
 
 

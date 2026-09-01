@@ -23,7 +23,12 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from drive_ids import export_url, is_real_drive_id, parse_drive_refs  # noqa: E402
+from drive_ids import (  # noqa: E402
+    export_looks_like_html,
+    export_url,
+    is_real_drive_id,
+    parse_drive_refs,
+)
 
 TASKS_DB = "3bc0b26fcc4e8057b7ade1cdf5a67e6e"
 DRIVE_CONFIRM_PAGE = "3cd0b26fcc4e819bb9ead19d74fb64a6"
@@ -136,6 +141,43 @@ def hq_confirm_refs(token: str) -> dict[str, str]:
     return refs
 
 
+def hq_task_drive_refs(token: str) -> list[dict[str, str]]:
+    """Any HQ Task with a Drive URL or a non-inline Drive file ID."""
+    body = json.dumps(
+        {
+            "filter": {
+                "or": [
+                    {"property": "Drive URL", "url": {"is_not_empty": True}},
+                    {
+                        "and": [
+                            {"property": "Drive file ID", "rich_text": {"is_not_empty": True}},
+                            {"property": "Drive file ID", "rich_text": {"does_not_contain": "inline-"}},
+                        ]
+                    },
+                ]
+            },
+            "page_size": 20,
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        f"https://api.notion.com/v1/databases/{TASKS_DB}/query",
+        data=body,
+        method="POST",
+        headers=notion_headers(token),
+    )
+    with urllib.request.urlopen(req, timeout=45) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    out: list[dict[str, str]] = []
+    for page in data.get("results") or []:
+        props = page.get("properties") or {}
+        refs = parse_drive_refs(plain(props.get("Drive URL")), plain(props.get("Drive file ID")))
+        refs["name"] = plain(props.get("Name"))
+        refs["page"] = page.get("url") or ""
+        if refs.get("file_id") or refs.get("folder_id"):
+            out.append(refs)
+    return out
+
+
 def n8n_executions(api_key: str) -> list[dict]:
     req = urllib.request.Request(
         f"{N8N_URL}/api/v1/executions?limit=50&workflowId={MEETING_WF_ID}",
@@ -185,6 +227,9 @@ def try_export_and_post(file_id: str, secret: str) -> bool:
         print(f"public export HTTP {err.code} for Drive file (not shared)")
         return False
     compact = " ".join(text.split())
+    if export_looks_like_html(text):
+        print("public export returned HTML (not shared or login wall)")
+        return False
     if len(compact) < 80:
         print(f"public export too short ({len(compact)} chars)")
         return False
@@ -287,11 +332,29 @@ def main() -> int:
                     f"mode={item.get('mode')} start={item.get('startedAt')}"
                 )
         confirm_file = refs.get("file_id") or ""
+        pending: list[str] = []
         if confirm_file and confirm_file not in real_ids:
+            pending.append(confirm_file)
+        try:
+            extra_rows = hq_task_drive_refs(token)
+        except urllib.error.HTTPError as err:
+            print(f"hq drive-url rows HTTP {err.code}")
+            extra_rows = []
+        for row in extra_rows:
+            print(
+                "HQ Task Drive row "
+                f"name={row.get('name')!r} file={row.get('file_id') or '-'} "
+                f"folder={row.get('folder_id') or '-'} page={row.get('page') or '-'}"
+            )
+            extra_file = row.get("file_id") or ""
+            if extra_file and extra_file not in real_ids and extra_file not in pending:
+                pending.append(extra_file)
+        if pending:
             secret = railway_webhook_secret()
             if secret:
-                print("trying public Google Doc export for HQ file ID")
-                try_export_and_post(confirm_file, secret)
+                for file_id in pending:
+                    print(f"trying public Google Doc export for {file_id[:8]}…")
+                    try_export_and_post(file_id, secret)
             else:
                 print("no Railway webhook secret; skip public export POST")
 

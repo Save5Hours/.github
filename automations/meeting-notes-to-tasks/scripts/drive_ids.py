@@ -75,3 +75,8 @@ def parse_drive_refs(*parts: str) -> dict[str, str]:
 
 def export_url(file_id: str) -> str:
     return f"https://docs.google.com/document/d/{file_id}/export?format=txt"
+
+
+def export_looks_like_html(text: str) -> bool:
+    lower = (text or "").lower()
+    return "<html" in lower or "<!doctype html" in lower or "accounts.google" in lower

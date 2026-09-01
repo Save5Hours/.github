@@ -220,7 +220,7 @@ nodes = [
         "typeVersion": 1,
         "position": [-420, 140],
         "parameters": {
-            "content": "## Meeting notes → HQ Tasks\n\nGemini often creates an empty Doc and fills it after the meeting. This workflow watches **file created** and **file updated**, skips notes shorter than 80 characters, then sends text to OpenRouter (`openrouter/free`) and writes HQ Tasks.\n\n**Host n8n 1.123.x** (this repo Dockerfile). n8n 2.x needs extra task runners for Code nodes.\n\n`/webhook/meeting-notes` needs Header Auth (dry-run). `/webhook/meeting-notes-drive` is Apps Script (Google userinfo allowlist). `/webhook/public-drive-doc` accepts a public Doc URL, or `fileId`+`text` from the Drive-setup bookmarklet (private Docs; no sharing change).\n\nEvery minute, **HQ Drive URL poll** reads Drive URL / Drive file ID on the HQ confirmation task, plus the page body and comments. A public Doc there is exported and written as HQ Tasks (no Google OAuth). Private Docs still need Drive setup paste or Apps Script.",
+            "content": "## Meeting notes → HQ Tasks\n\nGemini often creates an empty Doc and fills it after the meeting. This workflow watches **file created** and **file updated**, skips notes shorter than 80 characters, then sends text to OpenRouter (`openrouter/free`) and writes HQ Tasks.\n\n**Host n8n 1.123.x** (this repo Dockerfile). n8n 2.x needs extra task runners for Code nodes.\n\n`/webhook/meeting-notes` needs Header Auth (dry-run). `/webhook/meeting-notes-drive` is Apps Script (Google userinfo allowlist). `/webhook/public-drive-doc` accepts a public Doc URL, or `fileId`+`text` from the Drive-setup bookmarklet (private Docs; no sharing change).\n\nEvery minute, **HQ Drive URL poll** reads Drive URL / Drive file ID on the HQ confirmation task, plus the page body and comments. A public Doc there is exported and written as HQ Tasks (no Google OAuth). Private Docs still need Drive setup paste, Colab, or Apps Script. `fileId`+`text` POSTs continue to OpenRouter in parallel with the HTTP 200 (no public export).",
             "height": 460,
             "width": 340,
             "color": 7,
@@ -1110,11 +1110,13 @@ connections = {
     "Parse Drive URL": conn("Has Drive file ID"),
     "Has Drive file ID": {
         "main": [
-            [{"node": "Respond public Doc", "type": "main", "index": 0}],
+            [
+                {"node": "Respond public Doc", "type": "main", "index": 0},
+                {"node": "Has Doc text already", "type": "main", "index": 0},
+            ],
             [{"node": "Respond public Doc error", "type": "main", "index": 0}],
         ]
     },
-    "Respond public Doc": conn("Has Doc text already"),
     "Respond public Doc error": conn("Reject missing Drive URL"),
     "Has Doc text already": {
         "main": [

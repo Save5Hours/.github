@@ -84,9 +84,10 @@ assert conns["Public Drive Doc GET"]["main"][0][0]["node"] == "Redirect to Drive
 assert conns["Drive Apps Script GET"]["main"][0][0]["node"] == "Redirect to Drive setup"
 assert "/webhook/drive-setup" in nodes["Redirect to Drive setup"]["parameters"]["responseBody"]
 assert conns["Parse Drive URL"]["main"][0][0]["node"] == "Has Drive file ID"
-assert conns["Has Drive file ID"]["main"][0][0]["node"] == "Respond public Doc"
+true_nodes = [link["node"] for link in conns["Has Drive file ID"]["main"][0]]
+assert true_nodes == ["Respond public Doc", "Has Doc text already"]
 assert conns["Has Drive file ID"]["main"][1][0]["node"] == "Respond public Doc error"
-assert conns["Respond public Doc"]["main"][0][0]["node"] == "Has Doc text already"
+assert "Respond public Doc" not in conns
 assert conns["Respond public Doc error"]["main"][0][0]["node"] == "Reject missing Drive URL"
 assert nodes["Respond public Doc error"]["parameters"]["options"]["responseCode"] == 400
 assert nodes["Public Drive Doc"]["parameters"]["responseMode"] == "responseNode"
